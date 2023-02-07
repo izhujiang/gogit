@@ -5,28 +5,32 @@ import (
 	"fmt"
 	"io"
 	"strings"
+
+	"github.com/izhujiang/gogit/common"
 )
 
 type Commit struct {
-	gObj      *GitObject
-	tree      Hash
-	parent    []Hash
+	oid       common.Hash
+	tree      common.Hash
+	parent    []common.Hash
 	author    string
 	committer string
 	message   string
 }
 
-func NewCommit(g *GitObject) *Commit {
+func GitObjectToCommit(g *GitObject) *Commit {
+	commit := &Commit{}
+	// copy(commit.oid[:], g.oid[:])
 
-	commit := &Commit{
-		gObj: g,
-	}
-
-	commit.parseContent(g.content)
+	commit.decodeContent(g.content)
 	return commit
 }
 
-func (c *Commit) parseContent(content []byte) {
+func CommitToGitObject(c *Commit) *GitObject {
+	panic("CommitToGitObject not implemented")
+}
+
+func (c *Commit) decodeContent(content []byte) {
 	r := bytes.NewBuffer(content)
 
 	space := string([]byte{0x20})
@@ -48,10 +52,10 @@ func (c *Commit) parseContent(content []byte) {
 		if found {
 			switch itemName {
 			case "tree":
-				c.tree, _ = NewHash(itemValue)
+				c.tree, _ = common.NewHash(itemValue)
 
 			case "parent":
-				h, _ := NewHash(itemValue)
+				h, _ := common.NewHash(itemValue)
 				c.parent = append(c.parent, h)
 
 			case "author":

@@ -19,10 +19,12 @@ type HashObjectOption struct {
 }
 
 type CatFileOption plumbing.CatFileOption
-type DumpObjectOption plumbing.DumpObjectOption
+type DumpOption plumbing.DumpOption
 type LsTreeOption plumbing.LsTreeOption
 
 type AddOption struct {
 }
 
 type LsFilesOption plumbing.LsFilesOption
+type WriteTreeOption plumbing.WriteTreeOption
+type ReadTreeOption plumbing.ReadTreeOption

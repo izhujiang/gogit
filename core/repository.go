@@ -6,8 +6,8 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"sync"
 
+	"github.com/izhujiang/gogit/common"
 	"github.com/izhujiang/gogit/core/internal/utils"
 )
 
@@ -16,21 +16,14 @@ var (
 	errRepositoryNotExists = errors.New("Git repository does not exist, which should be initialized.")
 )
 
-const (
-	repositoryName = ".git"
-	repositoryRoot = ".git"
-)
-
 type Repository struct {
 	Name string
+	// relative to the root of workspace
 	Path string
 }
 
-var lock = &sync.Mutex{}
-var singleInstance *Repository
-
-// Init Git Repository in the path.
-func InitRepository(root string) error {
+// Init Git Repository in the path. Default, root == "."
+func (r *Repository) InitRepository(root string) error {
 	log.Println("init gogit repository.")
 	if root == "" {
 		root = "./"
@@ -38,18 +31,19 @@ func InitRepository(root string) error {
 		os.MkdirAll(root, 0755)
 	}
 
-	setupRepositoryFramework(filepath.Join(root, repositoryRoot))
+	setupRepositoryFramework(filepath.Join(root, r.Path))
 
 	return nil
 }
 
-func (r *Repository) Put(obj *GitObject) error {
-	oid := obj.id.String()
+func (r *Repository) Put(h common.Hash, obj *GitObject) error {
+	oid := h.String()
 	dir := filepath.Join(r.ObjectsPath(), oid[:2])
 	path := filepath.Join(dir, oid[2:])
 
 	if utils.FileExists(path) {
-		log.Fatal("git object has existed: ", oid)
+		return nil
+		// log.Fatal("git object has existed: ", oid)
 	}
 
 	os.MkdirAll(dir, 0755)
@@ -60,12 +54,11 @@ func (r *Repository) Put(obj *GitObject) error {
 	}
 	defer f.Close()
 
-	err = obj.Save(f)
-
+	err = obj.Serialize(f)
 	return err
 }
 
-func (r *Repository) Get(oid Hash) (*GitObject, error) {
+func (r *Repository) Get(oid common.Hash) (*GitObject, error) {
 	path, err := r.checkObjectExists(oid)
 	if err != nil {
 		log.Fatal(err)
@@ -80,11 +73,11 @@ func (r *Repository) Get(oid Hash) (*GitObject, error) {
 	}
 	defer f.Close()
 
-	obj, err := LoadGitObject(oid, f)
+	obj, err := DeserializeGitObject(f)
 	return obj, err
 }
 
-func (r *Repository) Dump(oid Hash, w io.Writer) error {
+func (r *Repository) Dump(oid common.Hash, w io.Writer) error {
 	path, err := r.checkObjectExists(oid)
 	if err != nil {
 		return err
@@ -101,7 +94,7 @@ func (r *Repository) Dump(oid Hash, w io.Writer) error {
 	return err
 }
 
-func (r *Repository) checkObjectExists(oid Hash) (string, error) {
+func (r *Repository) checkObjectExists(oid common.Hash) (string, error) {
 	name := oid.String()
 	dir := filepath.Join(r.ObjectsPath(), name[:2])
 	path := filepath.Join(dir, name[2:])
@@ -113,22 +106,22 @@ func (r *Repository) checkObjectExists(oid Hash) (string, error) {
 	return path, nil
 }
 
-func GetRepository() (*Repository, error) {
-	if singleInstance == nil {
-		lock.Lock()
-		defer lock.Unlock()
+// func GetRepository() (*Repository, error) {
+// 	if singleInstance == nil {
+// 		lock.Lock()
+// 		defer lock.Unlock()
 
-		if !utils.DirectoryExists(repositoryRoot) {
-			return nil, errRepositoryNotExists
-		}
+// 		if !utils.DirectoryExists(repositoryRoot) {
+// 			return nil, errRepositoryNotExists
+// 		}
 
-		if singleInstance == nil {
-			singleInstance = &Repository{Name: repositoryName, Path: repositoryRoot}
-		}
-	}
+// 		if singleInstance == nil {
+// 			singleInstance = &Repository{Name: repositoryName, Path: repositoryRoot}
+// 		}
+// 	}
 
-	return singleInstance, nil
-}
+// 	return singleInstance, nil
+// }
 
 func (r *Repository) ObjectsPath() string {
 	return filepath.Join(r.Path, "objects")

@@ -42,8 +42,8 @@ to quickly create a Cobra application.`,
 		if len(args) > 0 {
 			oid := args[0]
 			w := os.Stdout
-			option := git.DumpObjectOption{}
-			git.DumpObject(oid, w, &option)
+			option := git.DumpOption{}
+			git.Dump(oid, w, &option)
 		}
 	},
 }

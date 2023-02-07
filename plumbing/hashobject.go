@@ -5,13 +5,18 @@ import (
 	"io"
 	"log"
 
+	"github.com/izhujiang/gogit/common"
 	"github.com/izhujiang/gogit/core"
 )
 
-func HashObject(r io.Reader, t core.ObjectType) (*core.GitObject, error) {
+func HashObject(r io.Reader, t core.ObjectType) (common.Hash, *core.GitObject, error) {
 	buf := &bytes.Buffer{}
-	if _, err := io.Copy(buf, r); err != nil {
+	_, err := io.Copy(buf, r)
+	if err != nil {
 		log.Fatal(err)
 	}
-	return core.HashObject(buf.Bytes(), t)
+	g := core.NewGitObject(t, buf.Bytes())
+	h := g.Hash()
+
+	return h, g, err
 }

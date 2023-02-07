@@ -9,7 +9,10 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"strconv"
 	"strings"
+
+	"github.com/izhujiang/gogit/common"
 )
 
 type ObjectType byte
@@ -66,7 +69,7 @@ func ParseObjectType(objType string) ObjectType {
 // }
 
 type GitObject struct {
-	id Hash
+	// oid common.Hash
 	// header
 	objectType ObjectType
 	size       int64
@@ -74,8 +77,21 @@ type GitObject struct {
 	content []byte // unzip content which
 }
 
+func NewGitObject(t ObjectType, content []byte) *GitObject {
+	s := len(content)
+	c := make([]byte, s)
+
+	g := &GitObject{
+		objectType: t,
+		size:       int64(s),
+		content:    c,
+	}
+
+	return g
+}
+
 // Load GitObject from stream (git repository)
-func LoadGitObject(oid Hash, r io.Reader) (*GitObject, error) {
+func DeserializeGitObject(r io.Reader) (*GitObject, error) {
 	zr, _ := zlib.NewReader(r)
 	defer zr.Close()
 
@@ -89,7 +105,7 @@ func LoadGitObject(oid Hash, r io.Reader) (*GitObject, error) {
 		size:       size,
 	}
 
-	copy(g.id[:], oid[:])
+	// copy(g.oid[:], oid[:])
 	g.content = make([]byte, size)
 	zr.Read(g.content)
 
@@ -100,7 +116,7 @@ func LoadGitObject(oid Hash, r io.Reader) (*GitObject, error) {
 	return g, nil
 }
 
-func (g *GitObject) Save(w io.Writer) error {
+func (g *GitObject) Serialize(w io.Writer) error {
 	wt := zlib.NewWriter(w)
 	defer wt.Close()
 
@@ -114,9 +130,9 @@ func (g *GitObject) Save(w io.Writer) error {
 	return err
 }
 
-func (g *GitObject) Id() Hash {
-	return g.id
-}
+//	func (g *GitObject) Id() common.Hash {
+//		return g.oid
+//	}
 func (g *GitObject) Type() ObjectType {
 	return g.objectType
 }
@@ -129,23 +145,43 @@ func (g *GitObject) Content() []byte {
 	return g.content
 }
 
-// HashObject read data from a reader and create a GitObject classified by the ObjectType argument.
-func HashObject(content []byte, t ObjectType) (*GitObject, error) {
-	var err error
-
+func (g *GitObject) Hash() common.Hash {
 	b := &bytes.Buffer{}
-	fmt.Fprintf(b, "%s %d\u0000%s", t, len(content), content)
+	b.WriteString(g.objectType.String())
+	b.WriteString(" ")
+	b.WriteString(strconv.Itoa(len(g.content)))
+	b.WriteByte(0x00)
+	b.Write(g.content)
+	// fmt.Fprintf(b, "%s %d\u0000%s", t, len(content), content)
 
-	g := &GitObject{}
 	h1 := sha1.Sum(b.Bytes())
-	copy(g.id[:], h1[:])
-	g.objectType = t
-	g.size = int64(len(content))
-	g.content = make([]byte, len(content))
-	copy(g.content, content)
-
-	return g, err
+	var h common.Hash
+	copy(h[:], h1[:])
+	return h
 }
+
+// HashObject read data from a reader and create a GitObject classified by the ObjectType argument.
+// func HashObject(content []byte, t ObjectType) (*GitObject, error) {
+// 	var err error
+
+// 	b := &bytes.Buffer{}
+// 	b.WriteString(t.String())
+// 	b.WriteString(" ")
+// 	b.WriteString(strconv.Itoa(len(content)))
+// 	b.WriteByte(0x00)
+// 	b.Write(content)
+// 	// fmt.Fprintf(b, "%s %d\u0000%s", t, len(content), content)
+
+// 	g := &GitObject{}
+// 	h1 := sha1.Sum(b.Bytes())
+// 	copy(g.oid[:], h1[:])
+// 	g.objectType = t
+// 	g.size = int64(len(content))
+// 	g.content = make([]byte, len(content))
+// 	copy(g.content, content)
+
+// 	return g, err
+// }
 
 // Dump object in .git repository
 func DumpGitObject(r io.Reader, w io.Writer) {
@@ -171,7 +207,9 @@ func DumpGitObject(r io.Reader, w io.Writer) {
 
 		}
 
-		fmt.Fprintf(w, "%08x  % x  % x  %s\n", addr, b[:8], b[8:], string(b))
+		bb := strings.ReplaceAll(string(b), "\t", "\\t")
+		bb = strings.ReplaceAll(bb, "\n", "\\n")
+		fmt.Fprintf(w, "%08x  % x  % x  %s\n", addr, b[:8], b[8:], bb)
 		addr += 16
 	}
 }

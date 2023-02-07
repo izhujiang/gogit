@@ -13,11 +13,11 @@ func NewTag(g *GitObject) *Tag {
 		gObj: g,
 	}
 
-	t.parseContent(g.content)
+	t.decodeContent(g.content)
 	return t
 }
 
-func (t *Tag) parseContent(content []byte) {
+func (t *Tag) decodeContent(content []byte) {
 	panic("Not implemented")
 
 }

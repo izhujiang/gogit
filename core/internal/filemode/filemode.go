@@ -140,6 +140,7 @@ func (m FileMode) IsMalformed() bool {
 // Example: Regular is "0100644", Empty is "0000000".
 func (m FileMode) String() string {
 	return fmt.Sprintf("%07o", uint32(m))
+	// return fmt.Sprintf("%06o", uint32(m))
 }
 
 // IsRegular returns if the FileMode represents that of a regular file,

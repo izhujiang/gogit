@@ -3,7 +3,7 @@ package git
 import (
 	"log"
 
-	"github.com/izhujiang/gogit/core"
+	"github.com/izhujiang/gogit/common"
 	"github.com/izhujiang/gogit/porcelain"
 )
 
@@ -26,7 +26,7 @@ func Add(path string, option *AddOption) (string, error) {
 	oid, err := porcelain.Add(path)
 	if err != nil {
 		log.Fatal(err)
-		return core.InvalidObjectId.String(), nil
+		return common.InvalidObjectId.String(), nil
 	}
 
 	return oid.String(), err

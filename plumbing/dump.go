@@ -2,20 +2,23 @@ package plumbing
 
 import (
 	"io"
-	"log"
 
+	"github.com/izhujiang/gogit/common"
 	"github.com/izhujiang/gogit/core"
 )
 
-type DumpObjectOption struct {
+type DumpOption struct {
 }
 
-func DumpObject(oid core.Hash, w io.Writer, option *DumpObjectOption) error {
-	repo, err := core.GetRepository()
-	if err != nil {
-		log.Fatal(err)
-	}
+func DumpObject(oid common.Hash, w io.Writer, option *DumpOption) error {
+	repo := core.GetRepository()
 
 	repo.Dump(oid, w)
-	return err
+	return nil
+}
+
+func DumpIndex(w io.Writer, option *DumpOption) error {
+	sa := core.GetStagingArea()
+	sa.Dump(w)
+	return nil
 }

@@ -5,25 +5,23 @@ import (
 	"io"
 	"log"
 
+	"github.com/izhujiang/gogit/common"
 	"github.com/izhujiang/gogit/core"
 	"github.com/izhujiang/gogit/plumbing"
 )
 
 func HashObject(r io.Reader, w io.Writer, option *HashObjectOption) error {
 	objType := core.ParseObjectType(string(option.ObjectType))
-	obj, err := plumbing.HashObject(r, objType)
+	h, gObj, err := plumbing.HashObject(r, objType)
 
 	if option.Write {
-		repo, err := core.GetRepository()
-		if err != nil {
-			log.Fatal(err)
-		}
-		fmt.Printf("obj = %+v\n", obj)
-		repo.Put(obj)
+		repo := core.GetRepository()
+		fmt.Printf("obj = %+v\n", gObj)
+		repo.Put(h, gObj)
 	}
 
-	h := fmt.Sprintf("%s\n", obj.Id())
-	w.Write([]byte(h))
+	hStr := fmt.Sprintf("%s\n", h)
+	w.Write([]byte(hStr))
 
 	return err
 }
@@ -31,7 +29,7 @@ func HashObject(r io.Reader, w io.Writer, option *HashObjectOption) error {
 // CatFile Provide content or type and size information for repository objects which is identified by 40 characters.
 func CatFile(objectId string, w io.Writer, option *CatFileOption) error {
 	// fmt.Println("CatFileOption:", *option)
-	oid, err := core.NewHash(objectId)
+	oid, err := common.NewHash(objectId)
 	if err != nil {
 		log.Fatal(err)
 	} else {
@@ -42,21 +40,25 @@ func CatFile(objectId string, w io.Writer, option *CatFileOption) error {
 	return nil
 }
 
-func DumpObject(objectId string, w io.Writer, option *DumpObjectOption) error {
-	oid, err := core.NewHash(objectId)
-	if err != nil {
-		log.Fatal(err)
+func Dump(objectId string, w io.Writer, option *DumpOption) error {
+	var err error
+	if objectId == "index" {
+		err = plumbing.DumpIndex(w, (*plumbing.DumpOption)(option))
 	} else {
-		err := plumbing.DumpObject(oid, w, (*plumbing.DumpObjectOption)(option))
-		return err
+		oid, err := common.NewHash(objectId)
+		if err != nil {
+			log.Fatal(err)
+		} else {
+			err = plumbing.DumpObject(oid, w, (*plumbing.DumpOption)(option))
+		}
 	}
 
-	return nil
+	return err
 }
 
 // Shows one or more objects (blobs, trees, tags and commits).
 func Show(name string, w io.Writer) error {
-	oid, err := core.NewHash(name)
+	oid, err := common.NewHash(name)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -71,7 +73,7 @@ func Ls() error {
 
 // List the contents of a tree object
 func LsTree(treeId string, w io.Writer, option *LsTreeOption) error {
-	oid, err := core.NewHash(treeId)
+	oid, err := common.NewHash(treeId)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -87,4 +89,17 @@ func MakeTree() {
 // LsFiles show information about files in the index and the working tree.
 func LsFiles(w io.Writer, option *LsFilesOption) error {
 	return plumbing.LsFiles(w, (*plumbing.LsFilesOption)(option))
+}
+
+func WriteTree(w io.Writer, option *WriteTreeOption) error {
+	return plumbing.WriteTree(w, (*plumbing.WriteTreeOption)(option))
+}
+
+func ReadTree(w io.Writer, treeId string, option *ReadTreeOption) error {
+	oid, err := common.NewHash(treeId)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return plumbing.ReadTree(w, oid, (*plumbing.ReadTreeOption)(option))
 }

@@ -5,6 +5,7 @@ import (
 	"io"
 	"log"
 
+	"github.com/izhujiang/gogit/common"
 	"github.com/izhujiang/gogit/core"
 )
 
@@ -14,11 +15,8 @@ type CatFileOption struct {
 	PrintContent bool
 }
 
-func CatFile(oid core.Hash, w io.Writer, option *CatFileOption) error {
-	repo, err := core.GetRepository()
-	if err != nil {
-		log.Fatal(err)
-	}
+func CatFile(oid common.Hash, w io.Writer, option *CatFileOption) error {
+	repo := core.GetRepository()
 
 	gObj, err := repo.Get(oid)
 	if err != nil {
@@ -41,13 +39,15 @@ func CatFile(oid core.Hash, w io.Writer, option *CatFileOption) error {
 		// fmt.Fprintln(w, "object content:")
 		switch gObj.Type() {
 		case core.ObjectTypeBlob:
-			blob := core.NewBlob(gObj)
+			blob := core.NewBlob(oid, "")
+			blob.FromGitObject(gObj)
 			blob.ShowContent(w)
 		case core.ObjectTypeTree:
-			tree := core.NewTree(gObj)
+			tree := core.NewTree(oid, "")
+			tree.FromGitObject(gObj)
 			tree.ShowContent(w)
 		case core.ObjectTypeCommit:
-			commit := core.NewCommit(gObj)
+			commit := core.GitObjectToCommit(gObj)
 			commit.ShowContent(w)
 		default:
 			panic("Not implemented")

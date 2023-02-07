@@ -6,10 +6,11 @@ import (
 	"log"
 	"os"
 
+	"github.com/izhujiang/gogit/common"
 	"github.com/izhujiang/gogit/core"
 )
 
-func Add(path string) (core.Hash, error) {
+func Add(path string) (common.Hash, error) {
 	objType := core.ObjectTypeBlob
 
 	f, err := os.Open(path)
@@ -20,17 +21,17 @@ func Add(path string) (core.Hash, error) {
 
 	buf := &bytes.Buffer{}
 	io.Copy(buf, f)
-	obj, err := core.HashObject(buf.Bytes(), objType)
+	gObj := core.NewGitObject(objType, buf.Bytes())
+	h := gObj.Hash()
+
+	// obj, err := core.HashObject(buf.Bytes(), objType)
 	if err != nil {
 		log.Fatal(err)
 	}
-	repo, err := core.GetRepository()
-	if err != nil {
-		log.Fatal(err)
-	}
+	repo := core.GetRepository()
 
-	err = repo.Put(obj)
+	err = repo.Put(h, gObj)
 
-	return obj.Id(), err
+	return h, err
 
 }

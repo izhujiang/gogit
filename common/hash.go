@@ -1,4 +1,4 @@
-package core
+package common
 
 import (
 	"encoding/hex"
@@ -11,6 +11,10 @@ type Hash [20]byte
 var InvalidObjectId Hash
 var (
 	ErrMalformatedString = errors.New("malformed hexadecimal hash represented string")
+)
+
+var (
+	ZeroHash Hash
 )
 
 // NewHash return a new Hash from a hexadecimal hash representation
