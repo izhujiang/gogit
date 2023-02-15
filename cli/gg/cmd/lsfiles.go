@@ -107,13 +107,4 @@ func init() {
 	lsFilesCmd.Flags().BoolVarP(&showStage, "stage", "s", false, "Show staged contents' mode bits, object name and stage number in the output.")
 	rootCmd.AddCommand(lsFilesCmd)
 
-	// Here you will define your flags and configuration settings.
-
-	// Cobra supports Persistent Flags which will work for this command
-	// and all subcommands, e.g.:
-	// lsFilesCmd.PersistentFlags().String("foo", "", "A help for foo")
-
-	// Cobra supports local flags which will only run when this command
-	// is called directly, e.g.:
-	// lsFilesCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 }

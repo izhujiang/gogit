@@ -12,7 +12,7 @@ type WriteTreeOption struct {
 	prefix string
 }
 
-// WriteTree create a tree object from the current index
+// WriteTree create a tree object from the current index (.git/index file)
 func WriteTree(w io.Writer, option *WriteTreeOption) error {
 	sa := core.GetStagingArea()
 	tid, err := sa.WriteTree()

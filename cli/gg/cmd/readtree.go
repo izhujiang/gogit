@@ -63,13 +63,4 @@ func init() {
 	readTreeCmd.Flags().StringVar(&prefix, "prefix", "", "Keep the current index contents, and read the contents of the named tree-ish under the directory at <prefix>")
 	rootCmd.AddCommand(readTreeCmd)
 
-	// Here you will define your flags and configuration settings.
-
-	// Cobra supports Persistent Flags which will work for this command
-	// and all subcommands, e.g.:
-	// readTreeCmd.PersistentFlags().String("foo", "", "A help for foo")
-
-	// Cobra supports local flags which will only run when this command
-	// is called directly, e.g.:
-	// readTreeCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 }

@@ -28,30 +28,35 @@ func (s *StagingArea) Unstage(path string) {
 }
 
 func (s *StagingArea) Dump(w io.Writer) {
-	ip, err := os.Open(s.path)
+	f, err := os.Open(s.path)
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer ip.Close()
+	defer f.Close()
 
-	indexFile := index.Load(ip)
-	indexFile.Dump(w)
+	decoder := &index.IndexDecoder{Reader: f}
+	idx := index.New()
+	decoder.Decode(idx)
+	idx.Dump(w)
 }
 
 func (s *StagingArea) LsFiles(w io.Writer, withDetail bool) {
-	ip, err := os.Open(s.path)
+	f, err := os.Open(s.path)
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer ip.Close()
+	defer f.Close()
 
-	indexFile := index.Load(ip)
-	for _, entry := range indexFile.Entries {
+	decoder := &index.IndexDecoder{Reader: f}
+	idx := &index.Index{}
+	decoder.Decode(idx)
+
+	for _, entry := range idx.Entries {
 		if withDetail {
-			fmt.Fprintf(w, "%o %s %d \t%s\n", entry.Mode, entry.ObjectId, entry.StageNo(), string(entry.Path))
+			fmt.Fprintf(w, "%o %s %d \t%s\n", entry.Mode, entry.Oid, entry.Stage, entry.Filepath)
 
 		} else {
-			fmt.Fprintln(w, string(entry.Path))
+			fmt.Fprintln(w, entry.Filepath)
 		}
 	}
 
@@ -66,10 +71,13 @@ func (s *StagingArea) ReadTree(treeId common.Hash, prefix string) {
 		log.Fatal(err)
 	}
 	defer f.Close()
-	indexFile := index.Load(f)
+
+	decoder := &index.IndexDecoder{Reader: f}
+	idx := &index.Index{}
+	decoder.Decode(idx)
 
 	if prefix == "" {
-		indexFile.RemoveAll()
+		idx.RemoveAll()
 	}
 
 	repo := GetRepository()
@@ -79,12 +87,13 @@ func (s *StagingArea) ReadTree(treeId common.Hash, prefix string) {
 	idx_entries := make([]*index.IndexEntry, 0)
 	idx_entries = append(idx_entries, s.readTree(repo, treeId, prefix)...)
 	fmt.Printf("idx_entries = %+v\n", idx_entries)
-	indexFile.InsertEntries(idx_entries)
+	idx.InsertEntries(idx_entries)
 
 	ff, err := os.OpenFile(s.path+".bak", os.O_CREATE|os.O_RDWR, 0644)
 	// ff := os.OpenFile()
 	// f.Seek(0, 0)
-	indexFile.Save(ff)
+	encoder := &index.IndexEncoder{Writer: ff}
+	encoder.Encode(idx)
 }
 
 func (s *StagingArea) readTree(repo *Repository, treeId common.Hash, prefix string) []*index.IndexEntry {
@@ -98,7 +107,7 @@ func (s *StagingArea) readTree(repo *Repository, treeId common.Hash, prefix stri
 		case ObjectTypeBlob:
 			ie := index.NewIndexEntry(
 				entry.Oid,
-				uint32(entry.Mode),
+				entry.Mode,
 				filepath.Join(prefix, entry.Name))
 			idx_entries = append(idx_entries, ie)
 		case ObjectTypeTree:
@@ -119,14 +128,16 @@ func (s *StagingArea) WriteTree() (common.Hash, error) {
 	}
 	defer f.Close()
 
-	indexFile := index.Load(f)
+	decoder := &index.IndexDecoder{Reader: f}
+	idx := &index.Index{}
+	decoder.Decode(idx)
 
 	trees := treeCollection{}
-	for _, entry := range indexFile.Entries {
-		fmt.Printf("%o %s %d \t%s\n", entry.Mode, entry.ObjectId, entry.StageNo(), string(entry.Path))
-		fp := string(entry.Path)
+	for _, entry := range idx.Entries {
+		fmt.Printf("%o %s %d \t%s\n", entry.Mode, entry.Oid, entry.Stage, entry.Filepath)
+		fp := entry.Filepath
 		mode := filemode.FileMode(entry.Mode)
-		ftId := entry.ObjectId
+		ftId := entry.Oid
 		trees.addFilePath(fp, mode, ObjectTypeBlob, ftId)
 	}
 
