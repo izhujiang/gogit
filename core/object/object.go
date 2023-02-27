@@ -1,5 +1,5 @@
 // don't do go generate ./...  //go:generate stringer -type=ObjectType
-package core
+package object
 
 import (
 	"bytes"
@@ -61,15 +61,7 @@ func ParseObjectType(objType string) ObjectType {
 	}
 }
 
-// type Object interface {
-// 	Id() Hash
-// 	Type() ObjectType
-// 	Size() int64
-// 	Content() []byte
-// }
-
 type GitObject struct {
-	// oid common.Hash
 	// header
 	objectType ObjectType
 	size       int64
@@ -80,6 +72,7 @@ type GitObject struct {
 func NewGitObject(t ObjectType, content []byte) *GitObject {
 	s := len(content)
 	c := make([]byte, s)
+	copy(c, content)
 
 	g := &GitObject{
 		objectType: t,
@@ -105,7 +98,6 @@ func DeserializeGitObject(r io.Reader) (*GitObject, error) {
 		size:       size,
 	}
 
-	// copy(g.oid[:], oid[:])
 	g.content = make([]byte, size)
 	zr.Read(g.content)
 
@@ -154,9 +146,7 @@ func (g *GitObject) Hash() common.Hash {
 	b.Write(g.content)
 	// fmt.Fprintf(b, "%s %d\u0000%s", t, len(content), content)
 
-	h1 := sha1.Sum(b.Bytes())
-	var h common.Hash
-	copy(h[:], h1[:])
+	h := common.Hash(sha1.Sum(b.Bytes()))
 	return h
 }
 

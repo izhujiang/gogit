@@ -55,11 +55,11 @@ to quickly create a Cobra application.`,
 		if len(args) > 0 {
 			path := args[0]
 			f, err := os.Open(path)
-			defer f.Close()
-
 			if err != nil {
 				log.Fatal(err)
 			}
+			defer f.Close()
+
 			git.HashObject(f, os.Stdout, option)
 		} else {
 			if usingStdin {

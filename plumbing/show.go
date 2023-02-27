@@ -5,6 +5,7 @@ import (
 
 	"github.com/izhujiang/gogit/common"
 	"github.com/izhujiang/gogit/core"
+	"github.com/izhujiang/gogit/core/object"
 )
 
 // Shows one or more objects (blobs, trees, tags and commits).
@@ -19,18 +20,16 @@ func Show(oid common.Hash, w io.Writer) error {
 
 	gObj, err := repo.Get(oid)
 	switch gObj.Type() {
-	case core.ObjectTypeBlob:
-		blob := core.NewBlob(oid, "")
-		blob.FromGitObject(gObj)
+	case object.ObjectTypeBlob:
+		blob := object.GitObjectToBlob(gObj)
 		blob.ShowContent(w)
-	case core.ObjectTypeTree:
-		tree := core.NewTree(oid, "")
-		tree.FromGitObject(gObj)
+	case object.ObjectTypeTree:
+		tree := object.GitObjectToTree(gObj)
 		tree.ShowContent(w)
-	case core.ObjectTypeCommit:
-		commit := core.GitObjectToCommit(gObj)
+	case object.ObjectTypeCommit:
+		commit := object.GitObjectToCommit(gObj)
 		commit.ShowContent(w)
-	case core.ObjectTypeTag:
+	case object.ObjectTypeTag:
 		panic("Not implemented")
 	default:
 		panic("Not implemented")

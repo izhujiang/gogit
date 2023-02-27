@@ -9,6 +9,7 @@ import (
 
 	"github.com/izhujiang/gogit/common"
 	"github.com/izhujiang/gogit/core/internal/utils"
+	"github.com/izhujiang/gogit/core/object"
 )
 
 var (
@@ -36,7 +37,7 @@ func (r *Repository) InitRepository(root string) error {
 	return nil
 }
 
-func (r *Repository) Put(h common.Hash, obj *GitObject) error {
+func (r *Repository) Put(h common.Hash, obj *object.GitObject) error {
 	oid := h.String()
 	dir := filepath.Join(r.ObjectsPath(), oid[:2])
 	path := filepath.Join(dir, oid[2:])
@@ -58,7 +59,7 @@ func (r *Repository) Put(h common.Hash, obj *GitObject) error {
 	return err
 }
 
-func (r *Repository) Get(oid common.Hash) (*GitObject, error) {
+func (r *Repository) Get(oid common.Hash) (*object.GitObject, error) {
 	path, err := r.checkObjectExists(oid)
 	if err != nil {
 		log.Fatal(err)
@@ -73,7 +74,7 @@ func (r *Repository) Get(oid common.Hash) (*GitObject, error) {
 	}
 	defer f.Close()
 
-	obj, err := DeserializeGitObject(f)
+	obj, err := object.DeserializeGitObject(f)
 	return obj, err
 }
 
@@ -90,7 +91,7 @@ func (r *Repository) Dump(oid common.Hash, w io.Writer) error {
 	}
 	defer f.Close()
 
-	DumpGitObject(f, w)
+	object.DumpGitObject(f, w)
 	return err
 }
 

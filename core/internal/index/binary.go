@@ -66,7 +66,18 @@ func ReadUntil(r *bufio.Reader, delim byte) ([]byte, error) {
 	}
 }
 
+// Write writes the binary representation of data into w. Data must be a fixed-size value or a slice of fixed-size values, or a pointer to such data. Boolean values encode as one byte: 1 for true, and 0 for false.
+// Bytes written to w are encoded using the specified byte order (BigEndian) and read from successive fields of the data. When writing structs, zero values are written for fields with blank (_) field names.
 func Write[T any](w io.Writer, v T) error {
+	if err := binary.Write(w, binary.BigEndian, v); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func WriteString(w io.Writer, s string) error {
+	v := []byte(s)
 	if err := binary.Write(w, binary.BigEndian, v); err != nil {
 		return err
 	}

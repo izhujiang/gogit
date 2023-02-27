@@ -1,24 +1,20 @@
-package core
+package object
 
 import (
-	"bytes"
 	"fmt"
 	"io"
 	"sort"
-	"strings"
 
 	"github.com/izhujiang/gogit/common"
-	"github.com/izhujiang/gogit/core/internal/filemode"
 )
 
 // 100644 blob ec1871edcbfdc0d17ef498030e7ca676f291393d	LICENSE
 type TreeEntry struct {
-	Mode filemode.FileMode
-	Type ObjectType
-
 	// Id of subtree or blob,  which this entry refer to
 	Oid  common.Hash
 	Name string
+	Type ObjectType
+	Mode common.FileMode
 }
 type TreeEntryCollection map[string]*TreeEntry
 
@@ -27,33 +23,34 @@ func newTreeEntryCollecion() TreeEntryCollection {
 	return tc
 }
 
-func (tc TreeEntryCollection) sort() []*TreeEntry {
-	keys := make([]string, 0, len(tc))
-	for k := range tc {
+func (c TreeEntryCollection) sort() []*TreeEntry {
+	keys := make([]string, 0, len(c))
+	for k := range c {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
 	entries := []*TreeEntry{}
 	for _, k := range keys {
-		entry := tc[k]
+		entry := c[k]
 		entries = append(entries, entry)
 	}
 	return entries
 }
 
-func (tc TreeEntryCollection) add(name string, te *TreeEntry) {
-	tc[name] = te
+func (c TreeEntryCollection) add(te *TreeEntry) {
+	c[te.Name] = te
 }
 
-func newTreeEntry(mode filemode.FileMode, name string, refId common.Hash) *TreeEntry {
-	var oid common.Hash
-	copy(oid[:], refId[:])
+func NewTreeEntry(id common.Hash, name string, mode common.FileMode) *TreeEntry {
+	// var oid common.Hash
+	// copy(oid[:], refId[:])
+	oid := id
 	var otype ObjectType
 
 	switch mode {
-	case filemode.Dir:
+	case common.Dir:
 		otype = ObjectTypeTree
-	case filemode.Regular:
+	case common.Regular:
 		otype = ObjectTypeBlob
 	default:
 		otype = ObjectTypeUnknow
@@ -61,10 +58,10 @@ func newTreeEntry(mode filemode.FileMode, name string, refId common.Hash) *TreeE
 
 	}
 	return &TreeEntry{
-		Mode: mode,
-		Type: otype,
-		Name: name,
 		Oid:  oid,
+		Name: name,
+		Type: otype,
+		Mode: mode,
 	}
 
 }
@@ -84,8 +81,6 @@ func newTreeEntry(mode filemode.FileMode, name string, refId common.Hash) *TreeE
 type Tree struct {
 	// Hash ID
 	oid common.Hash
-	// optional: full path of the Tree
-	name string
 
 	// TODO: make sure entries ordered by name
 	// entries map[string]*TreeEntry
@@ -93,19 +88,18 @@ type Tree struct {
 }
 
 func (t *Tree) Id() common.Hash {
-	var h common.Hash
-	copy(h[:], t.oid[:])
+	h := t.oid
 	return h
 }
 
-func (t *Tree) Name() string {
-	return t.name
+func (t *Tree) SetId(oid common.Hash) {
+	t.oid = oid
 }
 
-func NewTree(oid common.Hash, name string) *Tree {
-	t := &Tree{}
-	copy(t.oid[:], oid[:])
-	t.name = name
+func NewTree(oid common.Hash) *Tree {
+	t := &Tree{
+		oid: oid,
+	}
 	t.entries = newTreeEntryCollecion()
 
 	return t
@@ -115,51 +109,22 @@ func (t *Tree) EntryHasExisted(name string) bool {
 	_, ok := t.entries[name]
 	return ok
 }
-
-func (t *Tree) FromGitObject(g *GitObject) {
-	r := bytes.NewBuffer(g.content)
-	entries := newTreeEntryCollecion()
-
-	for {
-		mode, err := r.ReadString(0x20)
-		mode = strings.Trim(mode, " ")
-		if err == io.EOF {
-			break
-		}
-		name, _ := r.ReadBytes(0x00)
-		fileName := string(name[:len(name)-1])
-		var oid common.Hash
-		_, _ = r.Read(oid[:])
-
-		fm, _ := filemode.New(mode)
-		entry := newTreeEntry(fm, fileName, oid)
-		entries.add(fileName, entry)
-	}
-
-	t.entries = entries
+func (t *Tree) AddEntry(entry *TreeEntry) {
+	t.entries[entry.Name] = entry
 }
 
-func (t *Tree) ToGitObject() *GitObject {
-	w := &bytes.Buffer{}
+type VisitTreeEntryFunc func(*TreeEntry)
 
-	entries := t.entries.sort()
-	for _, entry := range entries {
-		mode := strings.TrimLeft(entry.Mode.String(), "0 ")
-		w.WriteString(mode)
-		w.WriteByte(0x20)
-		w.WriteString(entry.Name)
-		w.WriteByte(0x00)
-		w.Write(entry.Oid[:])
+func (t *Tree) ForEachEntry(fn VisitTreeEntryFunc) {
+	keys := make([]string, 0, len(t.entries))
+	for k := range t.entries {
+		keys = append(keys, k)
 	}
 
-	content := w.Bytes()
-
-	g := &GitObject{
-		objectType: ObjectTypeTree,
-		size:       int64(len(content)),
-		content:    content,
+	for _, k := range keys {
+		fn(t.entries[k])
 	}
-	return g
+
 }
 
 // TODO: output with format interface

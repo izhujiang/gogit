@@ -1,4 +1,4 @@
-package filemode
+package common
 
 import (
 	"os"

@@ -1,6 +1,9 @@
 package core
 
-import "github.com/izhujiang/gogit/common"
+import (
+	"github.com/izhujiang/gogit/common"
+	"github.com/izhujiang/gogit/core/object"
+)
 
 // Git stores content in a manner similar to a UNIX filesystem, but a bit simplified.
 // All the content is stored as tree and blob objects, with trees corresponding to UNIX directory entries and blobs corresponding more or less to inodes or file contents.
@@ -8,7 +11,7 @@ import "github.com/izhujiang/gogit/common"
 type DirEntry interface {
 	/* TODO: add methods */
 	Id() common.Hash
-	Type() ObjectType
+	Type() object.ObjectType
 	Name() string
 	Size() int
 	Content() []byte

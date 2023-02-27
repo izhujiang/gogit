@@ -1,23 +1,27 @@
 package core
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"log"
 	"os"
-	"path/filepath"
+	"syscall"
+	"time"
 
 	"github.com/izhujiang/gogit/common"
-	"github.com/izhujiang/gogit/core/internal/filemode"
 	"github.com/izhujiang/gogit/core/internal/index"
+	"github.com/izhujiang/gogit/core/object"
 )
-
-type treeDict map[string]*Tree
 
 // inner state of StagingArea
 type StagingArea struct {
 	path string
 }
+
+var (
+	ErrIsNotATreeObject = errors.New("Is not a valid tree object.")
+)
 
 func (s *StagingArea) Stage(path string) error {
 	panic("Not implemented")
@@ -28,139 +32,155 @@ func (s *StagingArea) Unstage(path string) {
 }
 
 func (s *StagingArea) Dump(w io.Writer) {
-	f, err := os.Open(s.path)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer f.Close()
-
-	decoder := &index.IndexDecoder{Reader: f}
-	idx := index.New()
-	decoder.Decode(idx)
+	idx := index.LoadIndex(s.path)
 	idx.Dump(w)
 }
 
 func (s *StagingArea) LsFiles(w io.Writer, withDetail bool) {
-	f, err := os.Open(s.path)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer f.Close()
+	idx := index.LoadIndex(s.path)
 
-	decoder := &index.IndexDecoder{Reader: f}
-	idx := &index.Index{}
-	decoder.Decode(idx)
-
-	for _, entry := range idx.Entries {
+	idx.ForeachIndexEntry(func(entry *index.IndexEntry) {
 		if withDetail {
 			fmt.Fprintf(w, "%o %s %d \t%s\n", entry.Mode, entry.Oid, entry.Stage, entry.Filepath)
 
 		} else {
 			fmt.Fprintln(w, entry.Filepath)
 		}
-	}
+	})
 
 }
 
 // Reads tree information into the index
-func (s *StagingArea) ReadTree(treeId common.Hash, prefix string) {
-	fmt.Println("read-tree:", treeId, prefix)
-	// f, err := os.Open(s.path)
-	f, err := os.OpenFile(s.path, os.O_RDWR, 0644)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer f.Close()
+func (s *StagingArea) ReadTree(treeId common.Hash, prefix string, eraseOriginal bool) error {
+	idx := index.LoadIndex(s.path)
 
-	decoder := &index.IndexDecoder{Reader: f}
-	idx := &index.Index{}
-	decoder.Decode(idx)
-
-	if prefix == "" {
-		idx.RemoveAll()
+	if eraseOriginal == true {
+		idx.Reset()
 	}
 
 	repo := GetRepository()
-	// readTree := func() {
-
-	// }
-	idx_entries := make([]*index.IndexEntry, 0)
-	idx_entries = append(idx_entries, s.readTree(repo, treeId, prefix)...)
-	fmt.Printf("idx_entries = %+v\n", idx_entries)
-	idx.InsertEntries(idx_entries)
-
-	ff, err := os.OpenFile(s.path+".bak", os.O_CREATE|os.O_RDWR, 0644)
-	// ff := os.OpenFile()
-	// f.Seek(0, 0)
-	encoder := &index.IndexEncoder{Writer: ff}
-	encoder.Encode(idx)
-}
-
-func (s *StagingArea) readTree(repo *Repository, treeId common.Hash, prefix string) []*index.IndexEntry {
-	gObj, _ := repo.Get(treeId)
-	tree := NewTree(treeId, prefix)
-	tree.FromGitObject(gObj)
-
-	idx_entries := make([]*index.IndexEntry, 0)
-	for _, entry := range tree.entries {
-		switch entry.Type {
-		case ObjectTypeBlob:
-			ie := index.NewIndexEntry(
-				entry.Oid,
-				entry.Mode,
-				filepath.Join(prefix, entry.Name))
-			idx_entries = append(idx_entries, ie)
-		case ObjectTypeTree:
-			s.readTree(repo, entry.Oid, filepath.Join(prefix, entry.Name))
-		default:
-			log.Fatal("Unknown Entry Type")
-		}
+	gObj, err := repo.Get(treeId)
+	if err != nil {
+		return err
 	}
-	return idx_entries
+	if gObj.Type() != object.ObjectTypeTree {
+		return ErrIsNotATreeObject
+	}
 
+	tree := object.GitObjectToTree(gObj)
+	tree.ShowContent(os.Stdout)
+	// TODO: Add tree object to Index
+
+	// return idx.SaveIndex(s.path)
+	return nil
 }
+
+// func (s *StagingArea) readTree(repo *Repository, treeId common.Hash, prefix string) []*index.IndexEntry {
+// 	gObj, _ := repo.Get(treeId)
+// 	tree := GitObjectToTree(gObj)
+
+// 	idx_entries := make([]*index.IndexEntry, 0)
+// 	for _, entry := range tree.entries {
+// 		switch entry.Type {
+// 		case ObjectTypeBlob:
+// 			ie := index.NewIndexEntry(
+// 				entry.Oid,
+// 				entry.Mode,
+// 				filepath.Join(prefix, entry.Name))
+// 			idx_entries = append(idx_entries, ie)
+// 		case ObjectTypeTree:
+// 			s.readTree(repo, entry.Oid, filepath.Join(prefix, entry.Name))
+// 		default:
+// 			log.Fatal("Unknown Entry Type")
+// 		}
+// 	}
+// 	return idx_entries
+
+// }
 
 // read .git/index file and using files to build and save trees
 func (s *StagingArea) WriteTree() (common.Hash, error) {
-	f, err := os.Open(s.path)
+	idx := index.LoadIndex(s.path)
+
+	repo := GetRepository()
+	var saveTree = func(t *object.Tree) {
+		g := object.TreeToGitObject(t)
+		t.SetId(g.Hash())
+
+		repo.Put(t.Id(), g)
+	}
+
+	treeId, err := idx.WriteTree(saveTree)
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer f.Close()
 
-	decoder := &index.IndexDecoder{Reader: f}
-	idx := &index.Index{}
-	decoder.Decode(idx)
+	idx.SaveIndex(s.path)
 
-	trees := treeCollection{}
-	for _, entry := range idx.Entries {
-		fmt.Printf("%o %s %d \t%s\n", entry.Mode, entry.Oid, entry.Stage, entry.Filepath)
-		fp := entry.Filepath
-		mode := filemode.FileMode(entry.Mode)
-		ftId := entry.Oid
-		trees.addFilePath(fp, mode, ObjectTypeBlob, ftId)
-	}
-
-	trees.DFWalk(normalize)
-
-	trees.DFWalk(func(t *Tree) error {
-		fmt.Printf("\t%s %s\n ", t.name, t.oid)
-		for _, entry := range t.entries.sort() {
-			fmt.Printf("\t%s %s\t%s\t%s\n ", entry.Mode, entry.Type, entry.Oid, entry.Name)
-		}
-		return nil
-	})
-	return trees["."].oid, err
+	return treeId, nil
 }
 
-// Hash the tree according to new entries and save to repository
-func normalize(t *Tree) error {
-	g := t.ToGitObject()
-	t.oid = g.Hash()
+// UpdateIndexEntry add or replace IndexEntry identified by path, and Invalidate all entries in TreeCache covered by path
+func (s *StagingArea) UpdateIndex(oid common.Hash, path string) {
+	idx := index.LoadIndex(s.path)
 
-	repo := GetRepository()
-	err := repo.Put(t.oid, g)
-	// fmt.Printf("writing %s\n", h)
+	entry, _ := idx.FindIndexEntry(path)
 
-	return err
+	if entry == nil {
+		entry = index.NewIndexEntry(oid, common.Regular, path)
+		idx.InsertIndexEntry(entry)
+	}
+
+	fi, err := os.Stat(path)
+	if err != nil {
+		log.Fatal(err)
+	}
+	stat := fi.Sys().(*syscall.Stat_t)
+	entry.Oid = oid
+	entry.Mode = common.FileMode(stat.Mode)
+	entry.CTime = time.Unix(int64(stat.Ctimespec.Sec), int64(stat.Ctimespec.Nsec))
+	entry.MTime = fi.ModTime()
+	entry.Dev = uint32(stat.Dev)
+	entry.Ino = uint32(stat.Ino)
+	entry.Uid = stat.Gid
+	entry.Gid = stat.Gid
+	entry.Size = uint32(stat.Size)
+
+	idx.SaveIndex(s.path)
+}
+
+func (s *StagingArea) UpdateIndexFromCache(oid common.Hash, path string, mode common.FileMode) {
+	idx := index.LoadIndex(s.path)
+
+	entry, _ := idx.FindIndexEntry(path)
+
+	fmt.Println("found entry: ", entry)
+	if entry == nil {
+		entry = index.NewIndexEntry(oid, mode, path)
+		idx.InsertIndexEntry(entry)
+	} else {
+		entry.Oid = oid
+		entry.Mode = mode
+		entry.CTime = time.Unix(0, 0)
+		entry.MTime = time.Unix(0, 0)
+		entry.Dev = 0
+		entry.Ino = 0
+		entry.Uid = 0
+		entry.Gid = 0
+		entry.Size = 0
+		entry.IntentToAdd = false
+		entry.Skipworktree = false
+		entry.Stage = 0
+		idx.InvalidatePathInCacheTree(path)
+	}
+
+	idx.SaveIndex(s.path)
+}
+
+// If a specified file is in the index but is missing then it’s removed. Default behavior is to ignore removed file.
+func (s *StagingArea) UpdateIndexRemove(path string) {
+	idx := index.LoadIndex(s.path)
+
+	idx.RemoveIndexEntry(path)
+	idx.SaveIndex(s.path)
 }

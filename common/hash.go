@@ -1,6 +1,7 @@
 package common
 
 import (
+	"bytes"
 	"encoding/hex"
 	"errors"
 )
@@ -35,4 +36,13 @@ func NewHash(s string) (Hash, error) {
 
 func (h Hash) String() string {
 	return hex.EncodeToString(h[:])
+}
+
+//	func (h Hash) Copy() Hash {
+//		var hc Hash
+//		copy(hc[:], h[:])
+//		return hc
+//	}
+func (h Hash) EqualsTo(t Hash) bool {
+	return bytes.Equal(h[:], t[:])
 }

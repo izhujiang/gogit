@@ -6,6 +6,7 @@ import (
 
 	"github.com/izhujiang/gogit/common"
 	"github.com/izhujiang/gogit/core"
+	"github.com/izhujiang/gogit/core/object"
 )
 
 type LsTreeOption struct {
@@ -18,10 +19,9 @@ func LsTree(oid common.Hash, w io.Writer, option *LsTreeOption) error {
 	repo := core.GetRepository()
 
 	gObj, err := repo.Get(oid)
-	if gObj.Type() == core.ObjectTypeTree {
+	if gObj.Type() == object.ObjectTypeTree {
 		if option.Recurse == false {
-			tree := core.NewTree(oid, "")
-			tree.FromGitObject(gObj)
+			tree := object.GitObjectToTree(gObj)
 			tree.ShowContent(w)
 		} else {
 			panic("ls-tree recursively not implemented")

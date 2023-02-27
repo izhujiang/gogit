@@ -8,18 +8,18 @@ import (
 )
 
 type ReadTreeOption struct {
-	Prefix string
+	HasPrefix bool
+	Prefix    string
 }
 
 // Reads tree information into the index.
 func ReadTree(w io.Writer, oid common.Hash, option *ReadTreeOption) error {
 	sa := core.GetStagingArea()
-	if option.Prefix == "" {
-		sa.ReadTree(oid, "")
-	} else {
-		// TODO: add an entry to the tree, and save it to stage area
-		panic("Not implemented")
-	}
 
-	return nil
+	var eraseOriginal bool
+	if option.HasPrefix == false {
+		eraseOriginal = true
+
+	}
+	return sa.ReadTree(oid, option.Prefix, eraseOriginal)
 }

@@ -22,6 +22,6 @@ func WriteTree(w io.Writer, option *WriteTreeOption) error {
 	}
 
 	// fmt.Fprintln(w, "Tree Id:")
-	fmt.Fprintf(w, "\t%s\n", tid)
+	fmt.Fprintf(w, "%s\n", tid)
 	return err
 }

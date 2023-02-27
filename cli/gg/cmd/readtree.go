@@ -26,10 +26,12 @@ import (
 
 	git "github.com/izhujiang/gogit/api"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 var (
-	prefix string
+	hasPrefix bool
+	prefix    string
 )
 
 // readTreeCmd represents the readTree command
@@ -43,11 +45,19 @@ Cobra is a CLI library for Go that empowers applications.
 This application is a tool to generate the needed files
 to quickly create a Cobra application.`,
 	Run: func(cmd *cobra.Command, args []string) {
+		cmd.Flags().Visit(func(f *pflag.Flag) {
+			if f.Name == "prefix" {
+				hasPrefix = true
+			}
+
+		})
+
 		if len(args) > 0 {
 			w := os.Stdout
 			id := args[0]
 			option := &git.ReadTreeOption{
-				Prefix: prefix,
+				HasPrefix: hasPrefix,
+				Prefix:    prefix,
 			}
 
 			git.ReadTree(w, id, option)
@@ -61,6 +71,7 @@ func init() {
 	// Keep the current index contents, and read the contents of the named tree-ish under the directory at
 	// <prefix>. The command will refuse to overwrite entries that already existed in the original index file.
 	readTreeCmd.Flags().StringVar(&prefix, "prefix", "", "Keep the current index contents, and read the contents of the named tree-ish under the directory at <prefix>")
+
 	rootCmd.AddCommand(readTreeCmd)
 
 }

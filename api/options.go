@@ -14,10 +14,9 @@ const (
 )
 
 type HashObjectOption struct {
-	ObjectType ObjectType
+	ObjectType string
 	Write      bool
 }
-
 type CatFileOption plumbing.CatFileOption
 type DumpOption plumbing.DumpOption
 type LsTreeOption plumbing.LsTreeOption
@@ -28,3 +27,4 @@ type AddOption struct {
 type LsFilesOption plumbing.LsFilesOption
 type WriteTreeOption plumbing.WriteTreeOption
 type ReadTreeOption plumbing.ReadTreeOption
+type UpdateIndexOption plumbing.UpdateIndexOption

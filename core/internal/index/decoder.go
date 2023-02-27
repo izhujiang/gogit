@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/izhujiang/gogit/common"
-	"github.com/izhujiang/gogit/core/internal/filemode"
 )
 
 type IndexDecoder struct {
@@ -62,12 +61,12 @@ func decodeHeader(r io.Reader, idx *Index) error {
 		return ErrNotOrInvalidIndexFile
 	}
 
-	idx.Version, err = ReadUint32(r)
-	if err != nil || idx.Version != idx_version_2 {
+	idx.version, err = ReadUint32(r)
+	if err != nil || idx.version != idx_version_2 {
 		return ErrInvalidIndexFileVersion
 	}
 
-	idx.NumberOfEntries, err = ReadUint32(r)
+	idx.numberOfIndexEntries, err = ReadUint32(r)
 	return err
 }
 
@@ -84,7 +83,7 @@ func validateCheckSum(all *bytes.Buffer) error {
 }
 
 func decodeIndexEntries(r *bufio.Reader, idx *Index) error {
-	entries := make([]*IndexEntry, 0)
+	// entries := make([]*IndexEntry, 0)
 	var c_sec, c_nsec uint32
 	var m_sec, m_nsec uint32
 	var dev, ino uint32
@@ -95,7 +94,7 @@ func decodeIndexEntries(r *bufio.Reader, idx *Index) error {
 	var ext_flags uint16
 	var filename []byte
 	var filenameLength int
-	for i := 0; i < int(idx.NumberOfEntries); i++ {
+	for i := 0; i < int(idx.numberOfIndexEntries); i++ {
 		c_sec, _ = ReadUint32(r)
 		c_nsec, _ = ReadUint32(r)
 		m_sec, _ = ReadUint32(r)
@@ -112,7 +111,7 @@ func decodeIndexEntries(r *bufio.Reader, idx *Index) error {
 		flags, _ = ReadUint16(r)
 
 		// version validation
-		if (idx.Version == idx_version_2) && (flags&maskFlagEntryExtended != 0) {
+		if (idx.version == idx_version_2) && (flags&maskFlagEntryExtended != 0) {
 			fmt.Println(ErrNotOrInvalidIndexFile)
 			return ErrNotOrInvalidIndexFile
 		}
@@ -133,9 +132,9 @@ func decodeIndexEntries(r *bufio.Reader, idx *Index) error {
 		filenameLength = int(flags & maskFlagNameLength)
 
 		// read path
-		if idx.Version == idx_version_2 || idx.Version == idx_version_3 {
+		if idx.version == idx_version_2 || idx.version == idx_version_3 {
 			// ReadBytes include 0x00
-			filename, _ = ReadUntil(r, NULL)
+			filename, _ = ReadUntil(r, sep_NULL)
 			// TODO: compare the length of filename with filenameLength
 			// OR read filenameLength bytes from io.Reader
 			overflow := (entry_fixed_size + len(filename) + 1) % 8
@@ -146,7 +145,7 @@ func decodeIndexEntries(r *bufio.Reader, idx *Index) error {
 				// r.Read(empty)
 			}
 		} else { // idx_version_4
-			filename, _ = ReadUntil(r, NULL)
+			filename, _ = ReadUntil(r, sep_NULL)
 		}
 
 		// validate filename length
@@ -162,7 +161,7 @@ func decodeIndexEntries(r *bufio.Reader, idx *Index) error {
 			MTime:        time.Unix(int64(m_sec), int64(m_nsec)),
 			Dev:          dev,
 			Ino:          ino,
-			Mode:         filemode.FileMode(mode),
+			Mode:         common.FileMode(mode),
 			Stage:        Stage(flags >> 12 & 0x3),
 			Uid:          uid,
 			Gid:          gid,
@@ -171,12 +170,11 @@ func decodeIndexEntries(r *bufio.Reader, idx *Index) error {
 			IntentToAdd:  (ext_flags & maskExtflagIntentToAdd) != 0,
 		}
 
-		// fmt.Println("file name: ", string(filename))
-		// fmt.Println(string(fileEntry.Path), len([]byte(fileEntry.Path)))
+		// fmt.Println("file name: ", string(entry.Filepath))
 
-		entries = append(entries, entry)
+		idx.entries = append(idx.entries, entry)
 	}
-	idx.Entries = entries
+	// fmt.Println("idx.entries:", idx.entries)
 	return nil
 }
 
@@ -224,31 +222,34 @@ func decodeTreeCacheExtension(rd io.Reader, idx *Index) error {
 
 	r := bufio.NewReader(io.LimitReader(rd, int64(size)))
 
-	idx.TreeCache = newTreeCache()
+	idx.cacheTree = newCacheTree()
 	for {
-		path, err := ReadUntil(r, 0x00)
+		name, err := ReadUntil(r, sep_NULL)
 		if err != nil {
 			break
 		}
-		s_entry_count, _ := ReadUntil(r, 0x20)
-		s_subtrees_count, _ := ReadUntil(r, 0x0A)
+		s_entry_count, _ := ReadUntil(r, sep_SPACE)
+		s_subtrees_count, _ := ReadUntil(r, sep_NEWLINE)
 		entry_count, _ := strconv.Atoi(string(s_entry_count))
 		subtrees_count, _ := strconv.Atoi(string(s_subtrees_count))
 
-		oid := common.ZeroHash[:]
 		// only the TreeEntry is valid
+		var oid []byte
 		if entry_count >= 0 {
 			oid, _ = ReadSlice(r, 20)
+		} else {
+			oid = make([]byte, 20)
 		}
 
-		te := &TreeEntry{
-			Name:       string(path),
-			EntryCount: entry_count,
-			Subtrees:   subtrees_count,
+		te := &CacheTreeEntry{
+			Name:         string(name),
+			EntryCount:   entry_count,
+			SubtreeCount: subtrees_count,
 		}
 		copy(te.Oid[:], oid)
+
 		// fmt.Println(te)
-		idx.TreeCache.Entries = append(idx.TreeCache.Entries, te)
+		idx.cacheTree.entries = append(idx.cacheTree.entries, te)
 	}
 
 	return nil

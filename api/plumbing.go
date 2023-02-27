@@ -6,20 +6,17 @@ import (
 	"log"
 
 	"github.com/izhujiang/gogit/common"
-	"github.com/izhujiang/gogit/core"
+	"github.com/izhujiang/gogit/core/object"
 	"github.com/izhujiang/gogit/plumbing"
 )
 
 func HashObject(r io.Reader, w io.Writer, option *HashObjectOption) error {
-	objType := core.ParseObjectType(string(option.ObjectType))
-	h, gObj, err := plumbing.HashObject(r, objType)
 
-	if option.Write {
-		repo := core.GetRepository()
-		fmt.Printf("obj = %+v\n", gObj)
-		repo.Put(h, gObj)
+	pho := &plumbing.HashObjectOption{
+		ObjectType: object.ParseObjectType(option.ObjectType),
+		Write:      option.Write,
 	}
-
+	h, err := plumbing.HashObject(r, pho)
 	hStr := fmt.Sprintf("%s\n", h)
 	w.Write([]byte(hStr))
 
@@ -102,4 +99,8 @@ func ReadTree(w io.Writer, treeId string, option *ReadTreeOption) error {
 	}
 
 	return plumbing.ReadTree(w, oid, (*plumbing.ReadTreeOption)(option))
+}
+
+func UpdateIndex(option *UpdateIndexOption) error {
+	return plumbing.UpdateIndex((*plumbing.UpdateIndexOption)(option))
 }

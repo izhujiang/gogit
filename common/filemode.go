@@ -1,4 +1,4 @@
-package filemode
+package common
 
 import (
 	"encoding/binary"
@@ -55,7 +55,7 @@ const (
 // Please note this function does not check if the returned FileMode
 // is valid in git or if it is malformed.  For instance, "1" will
 // return the malformed FileMode(1) and a nil error.
-func New(s string) (FileMode, error) {
+func NewFileMode(s string) (FileMode, error) {
 	n, err := strconv.ParseUint(s, 8, 32)
 	if err != nil {
 		return Empty, err

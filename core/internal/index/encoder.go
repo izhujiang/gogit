@@ -2,7 +2,9 @@ package index
 
 import (
 	"bytes"
+	"crypto/sha1"
 	"io"
+	"strconv"
 	"time"
 )
 
@@ -55,30 +57,23 @@ func (ie *IndexEncoder) Encode(idx *Index) {
 	encodeHeader(ie.Writer, idx)
 	encodeIndexEntries(ie.Writer, idx)
 
-	// // TODO: Serialize extentions
-	// buf.Write(idx.Extensions)
+	encodeExtensions(ie.Writer, idx)
+	encodeChecksum(ie.Writer, ie.buf)
 
-	// // append checksum
-	// h := sha1.Sum(buf.Bytes())
-	// buf.Write(h[:])
-
-	// buf.WriteTo(w)
 }
 
 func encodeHeader(w io.Writer, idx *Index) {
-	Write(w, sign_Index)
-	Write(w, idx.Version)
-	Write(w, len(idx.Entries))
+	buf := &bytes.Buffer{}
+	WriteString(buf, sign_Index)
+	Write(buf, idx.version)
+	Write(buf, idx.numberOfIndexEntries)
+	Write(w, buf.Bytes())
 }
 
 func encodeIndexEntries(w io.Writer, idx *Index) {
-	var c_sec, c_nsec uint32
-	var m_sec, m_nsec uint32
-	var flags uint16
-
-	for _, entry := range idx.Entries {
-		c_sec, c_nsec, _ = timeToUint32(entry.CTime)
-		m_sec, m_nsec, _ = timeToUint32(entry.MTime)
+	encodeIndexEntry := func(entry *IndexEntry) {
+		c_sec, c_nsec, _ := timeToUint32(entry.CTime)
+		m_sec, m_nsec, _ := timeToUint32(entry.MTime)
 
 		Write(w, c_sec)
 		Write(w, c_nsec)
@@ -94,7 +89,7 @@ func encodeIndexEntries(w io.Writer, idx *Index) {
 		Write(w, entry.Size)
 		Write(w, entry.Oid[:])
 
-		flags = uint16(entry.Stage&0x3) << 12
+		flags := uint16(entry.Stage&0x3) << 12
 		if l := len(entry.Filepath); l < maskFlagNameLength {
 			flags |= uint16(l)
 		} else {
@@ -118,9 +113,9 @@ func encodeIndexEntries(w io.Writer, idx *Index) {
 			entry_fixed_size += 2
 		}
 
-		Write(w, []byte(entry.Filepath))
+		WriteString(w, entry.Filepath)
 
-		if idx.Version == idx_version_2 || idx.Version == idx_version_3 {
+		if idx.version == idx_version_2 || idx.version == idx_version_3 {
 			entrySize := entry_fixed_size + len(entry.Filepath)
 			padLen := 8 - entrySize%8
 			pad := make([]byte, padLen)
@@ -129,10 +124,53 @@ func encodeIndexEntries(w io.Writer, idx *Index) {
 			// do nothing pad
 		}
 	}
+
+	idx.foreach(encodeIndexEntry)
 }
 
 func encodeExtensions(w io.Writer, idx *Index) {
+	encodeExtensionTreeCache(w, idx)
 
+	// TODO: encode other extentions
+	for _, ext := range idx.unknownExtensions {
+		Write(w, ext.Signature)
+		Write(w, ext.Size)
+		Write(w, ext.Data)
+	}
+
+}
+
+func encodeExtensionTreeCache(w io.Writer, idx *Index) {
+	// fmt.Println(len(idx.cacheTree.entries))
+
+	if idx.cacheTree != nil {
+		var size uint32
+		data := &bytes.Buffer{}
+
+		for _, entry := range idx.cacheTree.entries {
+			// fmt.Println("entry name: ", entry.Name, strconv.Itoa(entry.EntryCount), strconv.Itoa(entry.SubtreeCount))
+			WriteString(data, entry.Name)
+			Write(data, sep_NULL)
+			WriteString(data, strconv.Itoa(entry.EntryCount))
+			Write(data, sep_SPACE)
+			WriteString(data, strconv.Itoa(entry.SubtreeCount))
+			Write(data, sep_NEWLINE)
+			if entry.EntryCount >= 0 {
+				Write(data, entry.Oid[:])
+			}
+		}
+
+		Write(w, []byte(sign_ext_Tree))
+		size = uint32(data.Len())
+		Write(w, size)
+		Write(w, data.Bytes())
+	}
+}
+
+func encodeChecksum(w io.Writer, buf *bytes.Buffer) {
+	h := sha1.Sum(buf.Bytes())
+	w.Write(h[:])
+	// fmt.Println("sumcheck:", common.Hash(h).String())
 }
 
 func timeToUint32(t time.Time) (uint32, uint32, error) {

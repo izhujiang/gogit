@@ -8,10 +8,11 @@ import (
 
 	"github.com/izhujiang/gogit/common"
 	"github.com/izhujiang/gogit/core"
+	"github.com/izhujiang/gogit/core/object"
 )
 
 func Add(path string) (common.Hash, error) {
-	objType := core.ObjectTypeBlob
+	objType := object.ObjectTypeBlob
 
 	f, err := os.Open(path)
 	if err != nil {
@@ -21,7 +22,7 @@ func Add(path string) (common.Hash, error) {
 
 	buf := &bytes.Buffer{}
 	io.Copy(buf, f)
-	gObj := core.NewGitObject(objType, buf.Bytes())
+	gObj := object.NewGitObject(objType, buf.Bytes())
 	h := gObj.Hash()
 
 	// obj, err := core.HashObject(buf.Bytes(), objType)
