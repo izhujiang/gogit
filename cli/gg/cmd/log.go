@@ -28,27 +28,40 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// lstreeCmd represents the lstree command
-var lstreeCmd = &cobra.Command{
-	Use:   "ls-tree",
-	Short: "A brief description of your command",
-	Long: `A longer description that spans multiple lines and likely contains examples
-and usage of using your command. For example:
+var (
+	stat bool
+)
 
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
+// logCmd represents the log command
+var logCmd = &cobra.Command{
+	Use:   "log",
+	Short: "Show commit logs",
+	Long: `Shows the commit logs.
+
+       List commits that are reachable by following the parent links from the given commit(s), but exclude
+       commits that are reachable from the one(s) given with a ^ in front of them. The output is given in
+       reverse chronological order by default.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		// fmt.Printf("call ls-tree %s", args[0])
-		option := &git.LsTreeOption{
-			Recurse: false,
+		if len(args) > 0 {
+			commitId := args[0]
+			option := &git.LogOption{}
+			git.Log(os.Stdout, commitId, option)
 		}
-		w := os.Stdout
-		git.LsTree(w, args[0], option)
 	},
 }
 
 func init() {
-	rootCmd.AddCommand(lstreeCmd)
 
+	logCmd.Flags().BoolVar(&stat, "stat", false, `Generate a diffstat. By default, as much space as necessary will be used for the filename part, and the rest for the graph part.`)
+	rootCmd.AddCommand(logCmd)
+
+	// Here you will define your flags and configuration settings.
+
+	// Cobra supports Persistent Flags which will work for this command
+	// and all subcommands, e.g.:
+	// logCmd.PersistentFlags().String("foo", "", "A help for foo")
+
+	// Cobra supports local flags which will only run when this command
+	// is called directly, e.g.:
+	// logCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 }

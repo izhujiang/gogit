@@ -29,7 +29,7 @@ func HashObject(r io.Reader, option *HashObjectOption) (common.Hash, error) {
 
 func hashObject(r io.Reader, t object.ObjectType) (common.Hash, *object.GitObject, error) {
 	buf := &bytes.Buffer{}
-	_, err := io.Copy(buf, r)
+	_, err := buf.ReadFrom(r)
 	if err != nil {
 		log.Fatal(err)
 	}

@@ -52,7 +52,7 @@ to quickly create a Cobra application.`,
 				PrintContent: printContent,
 			}
 
-			git.CatFile(args[0], os.Stdout, option)
+			git.CatFile(os.Stdout, args[0], option)
 		}
 	},
 }

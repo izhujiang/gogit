@@ -203,3 +203,11 @@ func DumpGitObject(r io.Reader, w io.Writer) {
 		addr += 16
 	}
 }
+
+type GitEntity interface {
+	/* TODO: add methods */
+	Id() common.Hash
+	FromGitObject(g *GitObject)
+	ToGitObject() *GitObject
+	Content() string
+}

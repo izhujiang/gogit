@@ -16,16 +16,14 @@ type CatFileOption struct {
 	PrintContent bool
 }
 
-func CatFile(oid common.Hash, w io.Writer, option *CatFileOption) error {
+func CatFile(w io.Writer, oid common.Hash, option *CatFileOption) error {
 	repo := core.GetRepository()
 
 	gObj, err := repo.Get(oid)
 	if err != nil {
 		log.Fatal(err)
 	}
-	// fmt.Printf("obj = %+v\n", obj)
 
-	// fmt.Fprintf(w, "object id: %s\n", obj.Id())
 	if !option.PrintType && !option.PrintSize {
 		option.PrintContent = true
 	}
@@ -39,14 +37,17 @@ func CatFile(oid common.Hash, w io.Writer, option *CatFileOption) error {
 	if option.PrintContent {
 		switch gObj.Type() {
 		case object.ObjectTypeBlob:
-			blob := object.GitObjectToBlob(gObj)
-			blob.ShowContent(w)
+			blob := object.EmptyBlob()
+			blob.FromGitObject(gObj)
+			fmt.Fprintf(w, "%s", blob.Content())
 		case object.ObjectTypeTree:
-			tree := object.GitObjectToTree(gObj)
-			tree.ShowContent(w)
+			tree := object.EmptyTree()
+			tree.FromGitObject(gObj)
+			fmt.Fprintf(w, "%s", tree.Content())
 		case object.ObjectTypeCommit:
-			commit := object.GitObjectToCommit(gObj)
-			commit.ShowContent(w)
+			commit := object.EmptyCommit()
+			commit.FromGitObject(gObj)
+			fmt.Fprintf(w, "%s", commit.Content())
 		default:
 			panic("Not implemented")
 

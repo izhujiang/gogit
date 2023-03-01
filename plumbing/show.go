@@ -1,6 +1,7 @@
 package plumbing
 
 import (
+	"fmt"
 	"io"
 
 	"github.com/izhujiang/gogit/common"
@@ -14,26 +15,26 @@ import (
 // For trees, it shows the names (equivalent to git ls-tree with --name-only).
 // For plain blobs, it shows the plain contents.
 // The command takes options applicable to the git diff-tree command to control how the changes the commit introduces are shown.
-func Show(oid common.Hash, w io.Writer) error {
+func Show(w io.Writer, oid common.Hash) error {
 	// TODO: need to be refactored
 	repo := core.GetRepository()
 
 	gObj, err := repo.Get(oid)
+	var entity object.GitEntity
 	switch gObj.Type() {
 	case object.ObjectTypeBlob:
-		blob := object.GitObjectToBlob(gObj)
-		blob.ShowContent(w)
+		entity = object.EmptyBlob()
 	case object.ObjectTypeTree:
-		tree := object.GitObjectToTree(gObj)
-		tree.ShowContent(w)
+		entity = object.EmptyTree()
 	case object.ObjectTypeCommit:
-		commit := object.GitObjectToCommit(gObj)
-		commit.ShowContent(w)
+		entity = object.EmptyCommit()
 	case object.ObjectTypeTag:
 		panic("Not implemented")
 	default:
 		panic("Not implemented")
 	}
+	entity.FromGitObject(gObj)
+	fmt.Fprintln(w, entity.Content())
 
 	return err
 }

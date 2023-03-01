@@ -22,15 +22,21 @@ THE SOFTWARE.
 package cmd
 
 import (
+	"bytes"
 	"os"
 
 	git "github.com/izhujiang/gogit/api"
 	"github.com/spf13/cobra"
 )
 
-// lstreeCmd represents the lstree command
-var lstreeCmd = &cobra.Command{
-	Use:   "ls-tree",
+var (
+	parents []string
+	message string
+)
+
+// commitTreeCmd represents the commitTree command
+var commitTreeCmd = &cobra.Command{
+	Use:   "commit-tree",
 	Short: "A brief description of your command",
 	Long: `A longer description that spans multiple lines and likely contains examples
 and usage of using your command. For example:
@@ -39,16 +45,39 @@ Cobra is a CLI library for Go that empowers applications.
 This application is a tool to generate the needed files
 to quickly create a Cobra application.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		// fmt.Printf("call ls-tree %s", args[0])
-		option := &git.LsTreeOption{
-			Recurse: false,
+
+		if message == "" {
+			buf := &bytes.Buffer{}
+			buf.ReadFrom(os.Stdin)
+			// remove "\n" at the end of stdin
+			message = string(buf.Bytes()[:buf.Len()-1])
 		}
-		w := os.Stdout
-		git.LsTree(w, args[0], option)
+
+		if len(args) > 0 {
+			option := &git.CommitTreeOption{
+				Parents: parents,
+				Message: message,
+			}
+
+			git.CommitTree(os.Stdout, args[0], option)
+
+		}
 	},
 }
 
 func init() {
-	rootCmd.AddCommand(lstreeCmd)
+	commitTreeCmd.Flags().StringArrayVarP(&parents, "parents", "p", []string{}, "Each -p indicates the id of a parent commit object.")
+	commitTreeCmd.Flags().StringVarP(&message, "message", "m", "", "A paragraph in the commit log message.")
 
+	rootCmd.AddCommand(commitTreeCmd)
+
+	// Here you will define your flags and configuration settings.
+
+	// Cobra supports Persistent Flags which will work for this command
+	// and all subcommands, e.g.:
+	// commitTreeCmd.PersistentFlags().String("foo", "", "A help for foo")
+
+	// Cobra supports local flags which will only run when this command
+	// is called directly, e.g.:
+	// commitTreeCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 }

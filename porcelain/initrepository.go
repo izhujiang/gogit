@@ -1,14 +1,16 @@
 package porcelain
 
 import (
+	"io"
+
 	"github.com/izhujiang/gogit/core"
 )
 
 // Init
-func Init(root string) error {
+func Init(w io.Writer, root string) error {
 	wkspace, _ := core.GetWorkspace()
 
-	wkspace.InitWorkspace(root)
+	wkspace.InitWorkspace(w, root)
 
 	return nil
 }

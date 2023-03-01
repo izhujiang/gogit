@@ -3,116 +3,167 @@ package index
 import (
 	"fmt"
 	"io"
-	"path/filepath"
 
 	"github.com/izhujiang/gogit/common"
+	"github.com/izhujiang/gogit/core/object"
 )
 
 // Tree contains pre-computed hashes for trees that can be derived from the
 // index. It helps speed up tree object generation from index for a new commit.
-
 type CacheTreeEntry struct {
-	Oid          common.Hash
-	Name         string
-	EntryCount   int
+	// Object name for the object that would result from writing this span of index as a tree
+	Oid common.Hash
+	// NUL-terminated path component (relative to its parent directory);
+	Name string
+	// BUG: EntryCount, ASCII decimal number of entries in the index that is covered by the tree this entry represents (entry_count), include items in subtrees;
+	EntryCount int
+	// ASCII decimal number that represents the number of subtrees this tree has;
 	SubtreeCount int
 }
 
+type CacheTreeEntryVisitFunc func(*CacheTreeEntry)
+
+const (
+	cachetree_cap = 64
+)
+
 type CacheTree struct {
-	entries   []*CacheTreeEntry
-	hashtable map[string]*CacheTreeEntry
+	// built-in trees
+	object.TreeCollection
+	// for encode and decode
+	entries []*CacheTreeEntry
+	// registers map[string]*CacheTreeEntry
 }
 
 func newCacheTree() *CacheTree {
-	return &CacheTree{
-		entries: make([]*CacheTreeEntry, 0, 64),
+	c := &CacheTree{
+		entries: make([]*CacheTreeEntry, 0, cachetree_cap),
 		// TODO: change hashtable into more meaningful name, mapping from fullpath to *CacheTreeEntry
-		hashtable: make(map[string]*CacheTreeEntry),
+		// registers: make(map[string]*CacheTreeEntry),
 	}
+
+	return c
 }
 
 func (c *CacheTree) reset() {
-	c.entries = make([]*CacheTreeEntry, 0, 64)
-	c.hashtable = make(map[string]*CacheTreeEntry)
+	c.entries = make([]*CacheTreeEntry, 0, cachetree_cap)
+	c.buildTrees()
+
+	// c.registers = make(map[string]*CacheTreeEntry)
 }
 
-func (c *CacheTree) append(te *CacheTreeEntry) {
-	c.entries = append(c.entries, te)
+func (c *CacheTree) buildTrees() {
+	var newTreeFromCacheTreeEntry func(int, string) *object.Tree
+	loopIndex := 0
+
+	newTreeFromCacheTreeEntry = func(cur int, path string) *object.Tree {
+		curItem := c.entries[cur]
+		t := object.NewTree(curItem.Oid, path)
+		// c.registers[path] = curItem
+
+		for i := 0; i < curItem.SubtreeCount; i++ {
+			loopIndex++
+			sub_t := newTreeFromCacheTreeEntry(loopIndex, c.entries[loopIndex].Name)
+			t.UpdateOrAddEntry(sub_t)
+		}
+
+		return t
+	}
+
+	if len(c.entries) > 0 {
+		t := newTreeFromCacheTreeEntry(0, c.entries[0].Name)
+		c.InitWithRoot(t)
+	} else {
+		c.InitWithRoot(nil)
+	}
 }
 
-type treeCacheEntryVisitHanlder func(*CacheTreeEntry)
+func (c *CacheTree) refreshCacheTreeEntries() {
+	c.entries = make([]*CacheTreeEntry, 0, cachetree_cap)
+	c.DFWalk(func(path string, t *object.Tree) {
+		entryCount := 0
+		subtreeCount := 0
+		t.ForEach(func(e object.TreeEntry) {
+			switch e.Mode() {
+			case common.Dir:
+				subtreeCount++
+			case common.Regular:
+				entryCount++
+			}
+		})
 
-// traval TreeCache by path, aa/bb/cc
-func (c *CacheTree) visitByPath(path string, fn treeCacheEntryVisitHanlder) {
-	path = filepath.Clean(path)
-	for {
-		if path == "." {
-			path = ""
+		if t.Id() == common.ZeroHash {
+			entryCount = -1
 		}
 
-		te, ok := c.hashtable[path]
-		if ok {
-			fn(te)
+		cachetreeEntry := &CacheTreeEntry{
+			Oid:          t.Id(),
+			Name:         t.Name(),
+			EntryCount:   entryCount,
+			SubtreeCount: subtreeCount,
+		}
+		// fmt.Println("new cache tree entry: ", cachetreeEntry)
+		c.entries = append(c.entries, cachetreeEntry)
+	}, true)
+
+	// sum up cache tree entry count bottom-up
+	var updateCacheTreeEntryCount func(int) *CacheTreeEntry
+	loopIndex := 0
+
+	updateCacheTreeEntryCount = func(cur int) *CacheTreeEntry {
+		curItem := c.entries[cur]
+		totalEntryCount := 0
+
+		for i := 0; i < curItem.SubtreeCount; i++ {
+			loopIndex++
+			subCacheTreeEntry := updateCacheTreeEntryCount(loopIndex)
+			if subCacheTreeEntry.EntryCount == -1 {
+				totalEntryCount = -1
+			} else {
+				totalEntryCount += subCacheTreeEntry.EntryCount
+			}
 		}
 
-		if path == "" {
-			break
+		if totalEntryCount != -1 || curItem.EntryCount != -1 {
+			curItem.EntryCount += totalEntryCount
+		} else {
+			curItem.EntryCount = -1
 		}
 
-		path = filepath.Dir(path)
+		return curItem
+	}
+
+	if len(c.entries) > 0 {
+		updateCacheTreeEntryCount(0)
+	}
+
+}
+
+func (c *CacheTree) foreach(fn CacheTreeEntryVisitFunc) {
+	for _, e := range c.entries {
+		fn(e)
 	}
 }
 
 // Invalidate all TreeEntry in the path, for instance, InvalidatePath("aaa/bbb/ccc.txt") invalidate "", "aaa", "bbb"
 func (c *CacheTree) invalidatePath(path string) {
-	invalidateTreeEntryHanlder := func(entry *CacheTreeEntry) {
-		entry.Oid = common.ZeroHash
-		entry.EntryCount = -1
+	invalidateTreeEntryHanlder := func(t *object.Tree) {
+		t.SetId(common.ZeroHash)
 	}
 
-	c.visitByPath(path, invalidateTreeEntryHanlder)
+	c.WalkByPath(path, invalidateTreeEntryHanlder, false)
 }
 
-// only when TreeEntry.
-func (c *CacheTree) findValidTreeCacheEntry(treePath string) (common.Hash, bool) {
-	te, ok := c.hashtable[treePath]
+// // only when TreeEntry.
+// func (c *CacheTree) findValidTreeCacheEntry(path string) (common.Hash, bool) {
+// 	// te, ok := c.registers[path]
 
-	if ok && te.EntryCount >= 0 {
-		return te.Oid, true
-	} else {
-		return common.ZeroHash, false
-	}
-}
-
-func (c *CacheTree) buildTrees() {
-	var fillHashtableEntry func(int, string)
-	loopIndex := 0
-
-	fillHashtableEntry = func(cur int, path string) {
-		curItem := c.entries[cur]
-		c.hashtable[path] = curItem
-
-		for i := 0; i < curItem.SubtreeCount; i++ {
-			loopIndex++
-			fillHashtableEntry(loopIndex, filepath.Join(path, c.entries[loopIndex].Name))
-		}
-	}
-
-	if len(c.entries) > 0 {
-		fillHashtableEntry(0, "")
-	}
-
-	// for debug: sort and print
-	// keys := make([]string, 0, len(c.hashtable))
-	// for k := range c.hashtable {
-	// 	keys = append(keys, k)
-	// }
-	// sort.Strings(keys)
-	// for _, k := range keys {
-	// 	fmt.Println(k, c.hashtable[k])
-	// }
-
-}
+// 	// if ok && te.EntryCount >= 0 {
+// 	// 	return te.Oid, true
+// 	// } else {
+// 	return common.ZeroHash, false
+// 	// }
+// }
 
 func (c *CacheTree) dump(w io.Writer) {
 	headerformat := "%-40s %8s %8s  %-20s\n"
@@ -125,15 +176,15 @@ func (c *CacheTree) dump(w io.Writer) {
 	)
 
 	lineFormat := "%20s %8d %8d  %s\n"
-	for _, entry := range c.entries {
+
+	c.foreach(func(e *CacheTreeEntry) {
 		fmt.Fprintf(w,
 			lineFormat,
-			entry.Oid,
-			entry.EntryCount,
-			entry.SubtreeCount,
-			entry.Name,
-		)
-	}
+			e.Oid,
+			e.EntryCount,
+			e.SubtreeCount,
+			e.Name)
+	})
 }
 
 type ResolveUndoEntry struct {

@@ -60,10 +60,10 @@ to quickly create a Cobra application.`,
 			}
 			defer f.Close()
 
-			git.HashObject(f, os.Stdout, option)
+			git.HashObject(os.Stdout, f, option)
 		} else {
 			if usingStdin {
-				git.HashObject(os.Stdin, os.Stdout, option)
+				git.HashObject(os.Stdout, os.Stdin, option)
 			}
 		}
 	},

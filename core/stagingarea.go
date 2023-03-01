@@ -59,44 +59,35 @@ func (s *StagingArea) ReadTree(treeId common.Hash, prefix string, eraseOriginal 
 	}
 
 	repo := GetRepository()
-	gObj, err := repo.Get(treeId)
+
+	trees := object.NewTreeCollection()
+	trees.InitWithRootId(treeId, prefix)
+
+	trees.Expand(func(t *object.Tree) {
+		gObj, err := repo.Get(t.Id())
+		if err != nil {
+			return
+		} else { // read content for tree identified by id
+			if gObj.Type() != object.ObjectTypeTree {
+				return
+			}
+			t.FromGitObject(gObj)
+		}
+	})
+
+	var saveTree = func(t *object.Tree) {
+		g := t.ToGitObject()
+		t.SetId(g.Hash())
+
+		repo.Put(t.Id(), g)
+	}
+
+	err := idx.ReadTrees(trees, saveTree)
 	if err != nil {
 		return err
 	}
-	if gObj.Type() != object.ObjectTypeTree {
-		return ErrIsNotATreeObject
-	}
-
-	tree := object.GitObjectToTree(gObj)
-	tree.ShowContent(os.Stdout)
-	// TODO: Add tree object to Index
-
-	// return idx.SaveIndex(s.path)
-	return nil
+	return idx.SaveIndex(s.path)
 }
-
-// func (s *StagingArea) readTree(repo *Repository, treeId common.Hash, prefix string) []*index.IndexEntry {
-// 	gObj, _ := repo.Get(treeId)
-// 	tree := GitObjectToTree(gObj)
-
-// 	idx_entries := make([]*index.IndexEntry, 0)
-// 	for _, entry := range tree.entries {
-// 		switch entry.Type {
-// 		case ObjectTypeBlob:
-// 			ie := index.NewIndexEntry(
-// 				entry.Oid,
-// 				entry.Mode,
-// 				filepath.Join(prefix, entry.Name))
-// 			idx_entries = append(idx_entries, ie)
-// 		case ObjectTypeTree:
-// 			s.readTree(repo, entry.Oid, filepath.Join(prefix, entry.Name))
-// 		default:
-// 			log.Fatal("Unknown Entry Type")
-// 		}
-// 	}
-// 	return idx_entries
-
-// }
 
 // read .git/index file and using files to build and save trees
 func (s *StagingArea) WriteTree() (common.Hash, error) {
@@ -104,7 +95,7 @@ func (s *StagingArea) WriteTree() (common.Hash, error) {
 
 	repo := GetRepository()
 	var saveTree = func(t *object.Tree) {
-		g := object.TreeToGitObject(t)
+		g := t.ToGitObject()
 		t.SetId(g.Hash())
 
 		repo.Put(t.Id(), g)
@@ -145,7 +136,9 @@ func (s *StagingArea) UpdateIndex(oid common.Hash, path string) {
 	entry.Uid = stat.Gid
 	entry.Gid = stat.Gid
 	entry.Size = uint32(stat.Size)
+	idx.Sort()
 
+	idx.InvalidatePathInCacheTree(path)
 	idx.SaveIndex(s.path)
 }
 
@@ -154,7 +147,6 @@ func (s *StagingArea) UpdateIndexFromCache(oid common.Hash, path string, mode co
 
 	entry, _ := idx.FindIndexEntry(path)
 
-	fmt.Println("found entry: ", entry)
 	if entry == nil {
 		entry = index.NewIndexEntry(oid, mode, path)
 		idx.InsertIndexEntry(entry)
@@ -171,8 +163,8 @@ func (s *StagingArea) UpdateIndexFromCache(oid common.Hash, path string, mode co
 		entry.IntentToAdd = false
 		entry.Skipworktree = false
 		entry.Stage = 0
-		idx.InvalidatePathInCacheTree(path)
 	}
+	idx.InvalidatePathInCacheTree(path)
 
 	idx.SaveIndex(s.path)
 }

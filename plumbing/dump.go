@@ -10,7 +10,7 @@ import (
 type DumpOption struct {
 }
 
-func DumpObject(oid common.Hash, w io.Writer, option *DumpOption) error {
+func DumpObject(w io.Writer, oid common.Hash, option *DumpOption) error {
 	repo := core.GetRepository()
 
 	repo.Dump(oid, w)

@@ -1,6 +1,7 @@
 package git
 
 import (
+	"io"
 	"log"
 
 	"github.com/izhujiang/gogit/common"
@@ -10,8 +11,8 @@ import (
 // Local  Operations
 
 // Init
-func Init(root string) error {
-	return porcelain.Init(root)
+func Init(w io.Writer, root string) error {
+	return porcelain.Init(w, root)
 }
 
 // Add file contents to the index
@@ -64,8 +65,12 @@ func Stash() error {
 	return nil
 }
 
-func Log() error {
-	return nil
+func Log(w io.Writer, commitId string, option *LogOption) error {
+	oid, err := common.NewHash(commitId)
+	if err != nil {
+		log.Fatal(err)
+	}
+	return porcelain.Log(w, oid, (*porcelain.LogOption)(option))
 }
 
 func Rm() error {

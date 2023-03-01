@@ -43,7 +43,7 @@ to quickly create a Cobra application.`,
 			oid := args[0]
 			w := os.Stdout
 			option := git.DumpOption{}
-			git.Dump(oid, w, &option)
+			git.Dump(w, oid, &option)
 		}
 	},
 }

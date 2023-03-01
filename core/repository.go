@@ -2,6 +2,7 @@ package core
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"os"
@@ -24,15 +25,14 @@ type Repository struct {
 }
 
 // Init Git Repository in the path. Default, root == "."
-func (r *Repository) InitRepository(root string) error {
-	log.Println("init gogit repository.")
+func (r *Repository) InitRepository(w io.Writer, root string) error {
 	if root == "" {
 		root = "./"
 	} else {
 		os.MkdirAll(root, 0755)
 	}
 
-	setupRepositoryFramework(filepath.Join(root, r.Path))
+	setupRepositoryFramework(w, filepath.Join(root, r.Path))
 
 	return nil
 }
@@ -59,10 +59,11 @@ func (r *Repository) Put(h common.Hash, obj *object.GitObject) error {
 	return err
 }
 
+// Get GitObject from Repository, return nil and error if oid is invalide
 func (r *Repository) Get(oid common.Hash) (*object.GitObject, error) {
 	path, err := r.checkObjectExists(oid)
 	if err != nil {
-		log.Fatal(err)
+		return nil, err
 	}
 
 	// fmt.Println("object path:", path)
@@ -131,8 +132,8 @@ func (r *Repository) ObjectsPath() string {
 // --------------------------------------------------------------------------
 // internal functions
 
-func setupRepositoryFramework(path string) error {
-	foldInfo, err := os.Stat(path)
+func setupRepositoryFramework(w io.Writer, path string) {
+	_, err := os.Stat(path)
 	if os.IsNotExist(err) {
 		os.MkdirAll(path, 0755)
 
@@ -160,10 +161,12 @@ func setupRepositoryFramework(path string) error {
 		desc := "Unnamed repository; edit this file 'description' to name the repository."
 		os.WriteFile(filepath.Join(path, "description"), []byte(desc), 0644)
 
-	} else {
-		log.Println(foldInfo)
-	}
+		path, _ = filepath.Abs(path)
+		msg := fmt.Sprintf("Initialized empty Git repository in %s/\n", path)
+		w.Write([]byte(msg))
 
-	// TODO: return non-nil error when fail to create .gogit repository in phisical device.
-	return nil
+	} else {
+		path, _ = filepath.Abs(path)
+		log.Printf("Git repository has existed in  %s/", path)
+	}
 }

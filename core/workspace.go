@@ -1,6 +1,7 @@
 package core
 
 import (
+	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -44,13 +45,13 @@ func GetWorkspace() (*Workspace, error) {
 }
 
 // TODO: log and return err
-func (w *Workspace) InitWorkspace(root string) {
+func (ws *Workspace) InitWorkspace(w io.Writer, root string) {
 	if root == "" {
 		root = "./"
 	} else {
 		os.MkdirAll(root, 0755)
 	}
-	w.repository.InitRepository(root)
+	ws.repository.InitRepository(w, root)
 
 }
 

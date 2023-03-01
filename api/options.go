@@ -1,6 +1,9 @@
 package git
 
-import "github.com/izhujiang/gogit/plumbing"
+import (
+	"github.com/izhujiang/gogit/plumbing"
+	"github.com/izhujiang/gogit/porcelain"
+)
 
 // export git types.
 
@@ -28,3 +31,6 @@ type LsFilesOption plumbing.LsFilesOption
 type WriteTreeOption plumbing.WriteTreeOption
 type ReadTreeOption plumbing.ReadTreeOption
 type UpdateIndexOption plumbing.UpdateIndexOption
+type CommitTreeOption plumbing.CommitTreeOption
+
+type LogOption porcelain.LogOption

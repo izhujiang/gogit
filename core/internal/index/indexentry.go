@@ -69,6 +69,11 @@ func (ide *IndexEntries) append(entry *IndexEntry) {
 
 func (ide *IndexEntries) insert(entry *IndexEntry) {
 	ide.entries = append(ide.entries, entry)
+	// sort.SliceStable(ide.entries, func(i, j int) bool {
+	// 	return strings.Compare(ide.entries[i].Filepath, ide.entries[j].Filepath) < 0
+	// })
+}
+func (ide *IndexEntries) Sort() {
 	sort.SliceStable(ide.entries, func(i, j int) bool {
 		return strings.Compare(ide.entries[i].Filepath, ide.entries[j].Filepath) < 0
 	})
@@ -77,9 +82,9 @@ func (ide *IndexEntries) insert(entry *IndexEntry) {
 func (ide *IndexEntries) insertEntries(entries []*IndexEntry) {
 	// add, sort and update header
 	ide.entries = append(ide.entries, entries...)
-	sort.SliceStable(ide.entries, func(i, j int) bool {
-		return strings.Compare(ide.entries[i].Filepath, ide.entries[j].Filepath) < 0
-	})
+	// sort.SliceStable(ide.entries, func(i, j int) bool {
+	// 	return strings.Compare(ide.entries[i].Filepath, ide.entries[j].Filepath) < 0
+	// })
 }
 
 func (ide *IndexEntries) remove(path string) bool {
@@ -105,8 +110,6 @@ func (ide *IndexEntries) foreach(fn HandleIndexEntryFunc) {
 		fn(entry)
 	}
 }
-
-// type IndexEntries []*IndexEntry
 
 func (ide *IndexEntries) dumpIndexEntries(w io.Writer) {
 	headerformat := "%-40s %-7s %8s %4s %4s %8s %8s  %-20s %-20s %-20s\n"

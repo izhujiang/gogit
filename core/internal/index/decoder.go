@@ -251,6 +251,7 @@ func decodeTreeCacheExtension(rd io.Reader, idx *Index) error {
 		// fmt.Println(te)
 		idx.cacheTree.entries = append(idx.cacheTree.entries, te)
 	}
+	idx.cacheTree.buildTrees()
 
 	return nil
 }

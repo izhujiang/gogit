@@ -141,25 +141,22 @@ func encodeExtensions(w io.Writer, idx *Index) {
 }
 
 func encodeExtensionTreeCache(w io.Writer, idx *Index) {
-	// fmt.Println(len(idx.cacheTree.entries))
-
 	if idx.cacheTree != nil {
 		var size uint32
 		data := &bytes.Buffer{}
 
-		for _, entry := range idx.cacheTree.entries {
-			// fmt.Println("entry name: ", entry.Name, strconv.Itoa(entry.EntryCount), strconv.Itoa(entry.SubtreeCount))
-			WriteString(data, entry.Name)
+		idx.cacheTree.foreach(func(e *CacheTreeEntry) {
+			// fmt.Println("entry name: ", e.Name, strconv.Itoa(e.EntryCount), strconv.Itoa(e.SubtreeCount))
+			WriteString(data, e.Name)
 			Write(data, sep_NULL)
-			WriteString(data, strconv.Itoa(entry.EntryCount))
+			WriteString(data, strconv.Itoa(e.EntryCount))
 			Write(data, sep_SPACE)
-			WriteString(data, strconv.Itoa(entry.SubtreeCount))
+			WriteString(data, strconv.Itoa(e.SubtreeCount))
 			Write(data, sep_NEWLINE)
-			if entry.EntryCount >= 0 {
-				Write(data, entry.Oid[:])
+			if e.EntryCount >= 0 {
+				Write(data, e.Oid[:])
 			}
-		}
-
+		})
 		Write(w, []byte(sign_ext_Tree))
 		size = uint32(data.Len())
 		Write(w, size)

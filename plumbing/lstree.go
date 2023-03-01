@@ -1,6 +1,7 @@
 package plumbing
 
 import (
+	"fmt"
 	"io"
 	"log"
 
@@ -15,14 +16,15 @@ type LsTreeOption struct {
 
 // LsTree list the contents of a tree object.
 // Lists the contents of a given tree object, like what "/bin/ls -a" does in the current working directory.
-func LsTree(oid common.Hash, w io.Writer, option *LsTreeOption) error {
+func LsTree(w io.Writer, oid common.Hash, option *LsTreeOption) error {
 	repo := core.GetRepository()
 
 	gObj, err := repo.Get(oid)
 	if gObj.Type() == object.ObjectTypeTree {
 		if option.Recurse == false {
-			tree := object.GitObjectToTree(gObj)
-			tree.ShowContent(w)
+			tree := object.EmptyTree()
+			tree.FromGitObject(gObj)
+			fmt.Fprintln(w, tree.Content())
 		} else {
 			panic("ls-tree recursively not implemented")
 		}
