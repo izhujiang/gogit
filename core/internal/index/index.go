@@ -82,18 +82,36 @@ type Index struct {
 	unknownExtensions []*Extension
 }
 
-func newIndex() *Index {
-	idx := &Index{
-		version:              2,
-		numberOfIndexEntries: 0,
-		IndexEntries:         IndexEntries{},
-		// TreeCache:         newTreeCache(),
-		// ResolveUndo:       newResolveUndo(),
-		unknownExtensions: make([]*Extension, 0),
+func LoadIndex(path string) *Index {
+	idx := newIndex()
+
+	f, err := os.Open(path)
+	// *PathError
+	if err != nil {
+		return idx
 	}
-	idx.reset()
+	defer f.Close()
+
+	decoder := NewIndexDecoder(f)
+	decoder.Decode(idx)
 
 	return idx
+}
+
+func (idx *Index) SaveIndex(path string) error {
+	if idx.cacheTree != nil {
+		idx.cacheTree.refreshCacheTreeEntries()
+	}
+
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	encoder := NewIndexEncoder(f)
+	encoder.Encode(idx)
+	return nil
 }
 
 func (idx *Index) Reset() {
@@ -105,30 +123,20 @@ func (idx *Index) Reset() {
 	}
 }
 
-func (idx *Index) FindIndexEntry(path string) (*IndexEntry, error) {
-	return idx.find(path)
-}
-
 func (idx *Index) ForeachIndexEntry(fn HandleIndexEntryFunc) {
 	idx.foreach(fn)
 }
 
-func (idx *Index) InsertIndexEntry(entry *IndexEntry) {
-	idx.insert(entry)
+func (idx *Index) FindIndexEntry(path string) *IndexEntry {
+	return idx.find(path)
+}
+
+func (idx *Index) UpdateOrInsertIndexEntry(entry *IndexEntry) {
+	idx.updateOrInsert(entry)
 	idx.numberOfIndexEntries = uint32(idx.size())
 
 	if idx.cacheTree != nil {
 		idx.cacheTree.invalidatePath(entry.Filepath)
-	}
-}
-func (idx *Index) InsertEntries(entries []*IndexEntry) {
-	idx.insertEntries(entries)
-	idx.numberOfIndexEntries = uint32(idx.size())
-
-	if idx.cacheTree != nil {
-		idx.ForeachIndexEntry(func(e *IndexEntry) {
-			idx.cacheTree.invalidatePath(e.Filepath)
-		})
 	}
 }
 
@@ -141,39 +149,13 @@ func (idx *Index) RemoveIndexEntry(path string) {
 	}
 }
 
-func (idx *Index) NewCacheTree() {
-	idx.cacheTree = newCacheTree()
-}
-
-// func (idx *Index) AddCacheTreeEntry(path string, entry *CacheTreeEntry) {
-// 	fmt.Println("idx.cacheTree: ", idx.cacheTree)
-// 	if idx.cacheTree != nil {
-// 		idx.cacheTree.add(path, entry)
-// 	}
-// }
-
-// func (idx *Index) BuildCacheTree() {
-// 	if idx.cacheTree != nil {
-// 		idx.cacheTree.buildTrees()
-// 	}
-// }
-
 func (idx *Index) InvalidatePathInCacheTree(path string) {
 	if idx.cacheTree != nil {
 		idx.cacheTree.invalidatePath(path)
 	}
 }
 
-// func (idx *Index) FindValidTreeCacheEntry(path string) (common.Hash, bool) {
-// 	if idx.cacheTree != nil {
-// 		return idx.cacheTree.findValidTreeCacheEntry(path)
-// 	}
-
-// 	return common.ZeroHash, false
-// }
-
 // using files in the index entries to build trees
-
 func (idx *Index) WriteTree(saveTreeFn object.WalkFunc) (common.Hash, error) {
 	if idx.cacheTree == nil {
 		idx.cacheTree = newCacheTree()
@@ -219,11 +201,11 @@ func (idx *Index) ReadTrees(trees *object.TreeCollection, saveTreeFn object.Walk
 		t.ForEach(func(e object.TreeEntry) {
 			if e.Type() == object.ObjectTypeBlob {
 				fullfilepath := filepath.Join(path, e.Name())
-				_, err := idx.find(fullfilepath)
-				if err != nil {
-					idxEntry := NewIndexEntry(e.Id(), e.Mode(), fullfilepath)
+				idxEntry := idx.find(fullfilepath)
+				if idxEntry == nil {
+					idxEntry = NewIndexEntry(e.Id(), e.Mode(), fullfilepath)
 					// fmt.Println("insert entry:", idxEntry)
-					idx.insert(idxEntry)
+					idx.updateOrInsert(idxEntry)
 				} else {
 					fmt.Fprintf(errMsg, "Entry '%s' overlaps with '%s'.  Cannot bind.\n", fullfilepath, fullfilepath)
 				}
@@ -291,34 +273,17 @@ func (idx *Index) Dump(w io.Writer) {
 	}
 }
 
-func LoadIndex(path string) *Index {
-	idx := newIndex()
-
-	f, err := os.Open(path)
-	// *PathError
-	if err != nil {
-		return idx
+// ----------------------------------------------
+func newIndex() *Index {
+	idx := &Index{
+		version:              2,
+		numberOfIndexEntries: 0,
+		IndexEntries:         IndexEntries{},
+		// TreeCache:         newTreeCache(),
+		// ResolveUndo:       newResolveUndo(),
+		unknownExtensions: make([]*Extension, 0),
 	}
-	defer f.Close()
-
-	decoder := NewIndexDecoder(f)
-	decoder.Decode(idx)
+	idx.reset()
 
 	return idx
-}
-
-func (idx *Index) SaveIndex(path string) error {
-	if idx.cacheTree != nil {
-		idx.cacheTree.refreshCacheTreeEntries()
-	}
-
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-
-	encoder := NewIndexEncoder(f)
-	encoder.Encode(idx)
-	return nil
 }

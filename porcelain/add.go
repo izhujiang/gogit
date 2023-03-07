@@ -1,38 +1,36 @@
 package porcelain
 
 import (
-	"bytes"
-	"io"
-	"log"
+	"io/fs"
 	"os"
+	"path/filepath"
 
-	"github.com/izhujiang/gogit/common"
 	"github.com/izhujiang/gogit/core"
-	"github.com/izhujiang/gogit/core/object"
 )
 
-func Add(path string) (common.Hash, error) {
-	objType := object.ObjectTypeBlob
+// Add file to repository and add index to stage area
+func Add(paths []string) error {
+	expandedPaths := make([]string, 0, 64)
+	for _, path := range paths {
+		fi, err := os.Stat(path)
+		if err != nil {
+			continue
+		}
 
-	f, err := os.Open(path)
-	if err != nil {
-		log.Fatal(err)
+		if fi.IsDir() {
+			filepath.WalkDir(path, func(path string, d fs.DirEntry, err error) error {
+				if d.Type().IsRegular() {
+					expandedPaths = append(expandedPaths, path)
+				}
+				return nil
+			})
+		} else {
+			expandedPaths = append(expandedPaths, path)
+		}
 	}
-	defer f.Close()
 
-	buf := &bytes.Buffer{}
-	io.Copy(buf, f)
-	gObj := object.NewGitObject(objType, buf.Bytes())
-	h := gObj.Hash()
+	sa := core.GetStagingArea()
+	sa.Stage(expandedPaths)
 
-	// obj, err := core.HashObject(buf.Bytes(), objType)
-	if err != nil {
-		log.Fatal(err)
-	}
-	repo := core.GetRepository()
-
-	err = repo.Put(h, gObj)
-
-	return h, err
-
+	return nil
 }

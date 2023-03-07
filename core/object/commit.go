@@ -40,6 +40,10 @@ func (c *Commit) SetId(oid common.Hash) {
 	c.oid = oid
 }
 
+func (c *Commit) Type() ObjectType {
+	return ObjectTypeCommit
+}
+
 func (c *Commit) FromGitObject(g *GitObject) {
 	r := bytes.NewBuffer(g.content)
 

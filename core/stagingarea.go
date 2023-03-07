@@ -6,8 +6,6 @@ import (
 	"io"
 	"log"
 	"os"
-	"syscall"
-	"time"
 
 	"github.com/izhujiang/gogit/common"
 	"github.com/izhujiang/gogit/core/internal/index"
@@ -23,8 +21,35 @@ var (
 	ErrIsNotATreeObject = errors.New("Is not a valid tree object.")
 )
 
-func (s *StagingArea) Stage(path string) error {
-	panic("Not implemented")
+func (s *StagingArea) Stage(filepaths []string) error {
+	idx := index.LoadIndex(s.path)
+	// repo := GetRepository()
+
+	stage := func(path string) error {
+		e := idx.FindIndexEntry(path)
+		fi, _ := os.Stat(path)
+
+		fmt.Println("staging ", path)
+		// file has not existed in idx of has been modified
+		if e == nil || e.MTime.Before(fi.ModTime()) {
+			oid, err := HashObjectFromPath(path, object.ObjectTypeBlob, true)
+			if err != nil {
+				return err
+			}
+
+			nEntry := index.NewIndexEntryWithFileInfo(oid, common.Regular, path, fi)
+			idx.UpdateOrInsertIndexEntry(nEntry)
+		}
+
+		return nil
+	}
+
+	for _, fp := range filepaths {
+		stage(fp)
+	}
+
+	idx.SaveIndex(s.path)
+	return nil
 }
 
 func (s *StagingArea) Unstage(path string) {
@@ -115,27 +140,14 @@ func (s *StagingArea) WriteTree() (common.Hash, error) {
 func (s *StagingArea) UpdateIndex(oid common.Hash, path string) {
 	idx := index.LoadIndex(s.path)
 
-	entry, _ := idx.FindIndexEntry(path)
-
-	if entry == nil {
-		entry = index.NewIndexEntry(oid, common.Regular, path)
-		idx.InsertIndexEntry(entry)
-	}
-
 	fi, err := os.Stat(path)
 	if err != nil {
 		log.Fatal(err)
 	}
-	stat := fi.Sys().(*syscall.Stat_t)
-	entry.Oid = oid
-	entry.Mode = common.FileMode(stat.Mode)
-	entry.CTime = time.Unix(int64(stat.Ctimespec.Sec), int64(stat.Ctimespec.Nsec))
-	entry.MTime = fi.ModTime()
-	entry.Dev = uint32(stat.Dev)
-	entry.Ino = uint32(stat.Ino)
-	entry.Uid = stat.Gid
-	entry.Gid = stat.Gid
-	entry.Size = uint32(stat.Size)
+
+	entry := index.NewIndexEntryWithFileInfo(oid, common.Regular, path, fi)
+	idx.UpdateOrInsertIndexEntry(entry)
+
 	idx.Sort()
 
 	idx.InvalidatePathInCacheTree(path)
@@ -145,25 +157,9 @@ func (s *StagingArea) UpdateIndex(oid common.Hash, path string) {
 func (s *StagingArea) UpdateIndexFromCache(oid common.Hash, path string, mode common.FileMode) {
 	idx := index.LoadIndex(s.path)
 
-	entry, _ := idx.FindIndexEntry(path)
+	entry := index.NewIndexEntry(oid, mode, path)
+	idx.UpdateOrInsertIndexEntry(entry)
 
-	if entry == nil {
-		entry = index.NewIndexEntry(oid, mode, path)
-		idx.InsertIndexEntry(entry)
-	} else {
-		entry.Oid = oid
-		entry.Mode = mode
-		entry.CTime = time.Unix(0, 0)
-		entry.MTime = time.Unix(0, 0)
-		entry.Dev = 0
-		entry.Ino = 0
-		entry.Uid = 0
-		entry.Gid = 0
-		entry.Size = 0
-		entry.IntentToAdd = false
-		entry.Skipworktree = false
-		entry.Stage = 0
-	}
 	idx.InvalidatePathInCacheTree(path)
 
 	idx.SaveIndex(s.path)

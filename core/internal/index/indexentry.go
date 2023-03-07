@@ -3,8 +3,10 @@ package index
 import (
 	"fmt"
 	"io"
+	"os"
 	"sort"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/izhujiang/gogit/common"
@@ -42,6 +44,36 @@ func NewIndexEntry(oid common.Hash, mode common.FileMode, filepath string) *Inde
 	return ie
 }
 
+func NewIndexEntryWithFileInfo(oid common.Hash, mode common.FileMode, filepath string, fi os.FileInfo) *IndexEntry {
+	e := &IndexEntry{
+		Oid:      oid,
+		Mode:     mode,
+		Filepath: filepath,
+	}
+
+	stat := fi.Sys().(*syscall.Stat_t)
+	e.Mode = common.FileMode(stat.Mode)
+	e.CTime = time.Unix(int64(stat.Ctimespec.Sec), int64(stat.Ctimespec.Nsec))
+	e.MTime = fi.ModTime()
+	e.Dev = uint32(stat.Dev)
+	e.Ino = uint32(stat.Ino)
+	e.Uid = stat.Gid
+	e.Gid = stat.Gid
+	e.Size = uint32(stat.Size)
+	return e
+}
+func (e *IndexEntry) UpdateWithFileInfo(fi os.FileInfo) {
+	stat := fi.Sys().(*syscall.Stat_t)
+	e.Mode = common.FileMode(stat.Mode)
+	e.CTime = time.Unix(int64(stat.Ctimespec.Sec), int64(stat.Ctimespec.Nsec))
+	e.MTime = fi.ModTime()
+	e.Dev = uint32(stat.Dev)
+	e.Ino = uint32(stat.Ino)
+	e.Uid = stat.Gid
+	e.Gid = stat.Gid
+	e.Size = uint32(stat.Size)
+}
+
 type IndexEntries struct {
 	entries []*IndexEntry
 }
@@ -53,21 +85,25 @@ func (ide *IndexEntries) reset() {
 	ide.entries = make([]*IndexEntry, 0, 256)
 }
 
-func (ide *IndexEntries) find(path string) (*IndexEntry, error) {
+func (ide *IndexEntries) find(path string) *IndexEntry {
 	for _, entry := range ide.entries {
 		if entry.Filepath == path {
-			return entry, nil
+			return entry
 		}
 	}
-
-	return nil, ErrIndexEntryNotExists
+	return nil
 }
 
 func (ide *IndexEntries) append(entry *IndexEntry) {
 	ide.entries = append(ide.entries, entry)
 }
 
-func (ide *IndexEntries) insert(entry *IndexEntry) {
+func (ide *IndexEntries) updateOrInsert(entry *IndexEntry) {
+	for i, e := range ide.entries {
+		if e.Filepath == entry.Filepath {
+			ide.entries[i] = entry
+		}
+	}
 	ide.entries = append(ide.entries, entry)
 	// sort.SliceStable(ide.entries, func(i, j int) bool {
 	// 	return strings.Compare(ide.entries[i].Filepath, ide.entries[j].Filepath) < 0
@@ -79,13 +115,13 @@ func (ide *IndexEntries) Sort() {
 	})
 }
 
-func (ide *IndexEntries) insertEntries(entries []*IndexEntry) {
-	// add, sort and update header
-	ide.entries = append(ide.entries, entries...)
-	// sort.SliceStable(ide.entries, func(i, j int) bool {
-	// 	return strings.Compare(ide.entries[i].Filepath, ide.entries[j].Filepath) < 0
-	// })
-}
+// func (ide *IndexEntries) insertEntries(entries []*IndexEntry) {
+// 	// add, sort and update header
+// 	ide.entries = append(ide.entries, entries...)
+// 	// sort.SliceStable(ide.entries, func(i, j int) bool {
+// 	// 	return strings.Compare(ide.entries[i].Filepath, ide.entries[j].Filepath) < 0
+// 	// })
+// }
 
 func (ide *IndexEntries) remove(path string) bool {
 	numOfEntries := len(ide.entries)
