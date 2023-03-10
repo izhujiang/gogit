@@ -51,7 +51,8 @@ var (
 	ErrNotOrInvalidIndexFile   = errors.New("This is not an valid index file.")
 	ErrInvalidIndexFileVersion = errors.New("The version of this index file is not supported.")
 	ErrInvalidTimestamp        = errors.New("Negative timestamps are not allowed")
-	ErrCorruptedIndexFile      = errors.New("corrupted index file")
+	ErrCorruptedIndexFile      = errors.New("Corrupted index file")
+	ErrCacheTreeAllValid       = errors.New("All trees in the cache are already valid and need no more regenerate cachetrees")
 )
 
 var (
@@ -157,6 +158,11 @@ func (idx *Index) InvalidatePathInCacheTree(path string) {
 
 // using files in the index entries to build trees
 func (idx *Index) WriteTree(saveTreeFn object.WalkFunc) (common.Hash, error) {
+	// cacheTree is already valid, do nothing
+	if idx.cacheTree != nil && idx.cacheTree.Root().Id() != common.ZeroHash {
+		return idx.cacheTree.Root().Id(), ErrCacheTreeAllValid
+	}
+
 	if idx.cacheTree == nil {
 		idx.cacheTree = newCacheTree()
 	}

@@ -32,6 +32,7 @@ func NewCommit(oid common.Hash, tree common.Hash, parents []common.Hash, author 
 		message,
 	}
 }
+
 func (c *Commit) Id() common.Hash {
 	h := c.oid
 	return h
@@ -42,6 +43,13 @@ func (c *Commit) SetId(oid common.Hash) {
 
 func (c *Commit) Type() ObjectType {
 	return ObjectTypeCommit
+}
+
+func (c *Commit) Tree() common.Hash {
+	return c.tree
+}
+func (c *Commit) Parents() []common.Hash {
+	return c.parents
 }
 
 func (c *Commit) FromGitObject(g *GitObject) {

@@ -69,8 +69,9 @@ func (c *TreeCollection) MakeTreeAll(path string) *Tree {
 
 }
 
-type WalkFunc func(t *Tree)
+type WalkFunc func(*Tree)
 type WalkWithPathFunc func(string, *Tree)
+type WalkEntryWithPathFunc func(string, TreeEntry)
 
 // Depth-first Walk
 func (c *TreeCollection) DFWalk(fn WalkWithPathFunc, preordering bool) {
@@ -136,6 +137,31 @@ func (c *TreeCollection) WalkByPath(path string, fn WalkFunc, preordering bool) 
 	walk(c.root, pathItems)
 }
 
+// assuming the treecollection hsa been expanded
+func (c *TreeCollection) WalkByAlphabeticalOrder(fn WalkEntryWithPathFunc) {
+	var walk func(string, *Tree)
+
+	walk = func(path string, t *Tree) {
+		t.ForEach(func(e TreeEntry) {
+			sub_path := filepath.Join(path, e.Name())
+			switch e.Type() {
+			case ObjectTypeTree:
+				walk(sub_path, e.(*Tree))
+
+			case ObjectTypeBlob:
+				fn(sub_path, e)
+
+			default:
+				panic("Not implemented")
+
+			}
+		})
+
+	}
+	if c.root != nil {
+		walk(c.root.name, c.root)
+	}
+}
 func (c *TreeCollection) Expand(fn WalkFunc) {
 	if c.root == nil {
 		return

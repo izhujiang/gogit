@@ -22,29 +22,39 @@ THE SOFTWARE.
 package cmd
 
 import (
-	"os"
+	"fmt"
 
-	git "github.com/izhujiang/gogit/api"
 	"github.com/spf13/cobra"
 )
 
-// commitCmd represents the commit command
-var commitCmd = &cobra.Command{
-	Use:   "commit",
-	Short: "Record changes to the repository",
-	Long: `Create a new commit containing the current contents of the index and the given log message describing the changes. The new commit is a direct
-       child of HEAD, usually the tip of the current branch, and the branch is updated to point to it (unless no branch is associated with the
-       working tree, in which case HEAD is "detached" as described in git-checkout(1)).`,
+// mvCmd represents the mv command
+var mvCmd = &cobra.Command{
+	Use:   "mv",
+	Short: "Move or rename a file, a directory, or a symlink",
+	Long: `Move or rename a file, directory or symlink.
+
+git mv [-v] [-f] [-n] [-k] <source> <destination>
+git mv [-v] [-f] [-n] [-k] <source> ... <destination directory>
+
+In the first form, it renames <source>, which must exist and be either a file, symlink or directory, to <destination>. In the second form, the
+last argument has to be an existing directory; the given sources will be moved into this directory.
+
+The index is updated after successful completion, but the change must still be committed.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		option := &git.CommitOption{
-			Message: message,
-		}
-		git.Commit(os.Stdout, option)
+		fmt.Println("mv called")
 	},
 }
 
 func init() {
-	commitCmd.Flags().StringVarP(&message, "message", "m", "", "Use the given <msg> as the commit message. If multiple -m options are given, their values are concatenated as separate paragraphs.")
-	rootCmd.AddCommand(commitCmd)
+	rootCmd.AddCommand(mvCmd)
 
+	// Here you will define your flags and configuration settings.
+
+	// Cobra supports Persistent Flags which will work for this command
+	// and all subcommands, e.g.:
+	// mvCmd.PersistentFlags().String("foo", "", "A help for foo")
+
+	// Cobra supports local flags which will only run when this command
+	// is called directly, e.g.:
+	// mvCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 }

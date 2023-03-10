@@ -1,0 +1,2 @@
+This is a copy of the Go text diffing packages that the official Go language server gopls uses internally to generate unified diffs.
+https://pkg.go.dev/golang.org/x/tools/internal/lsp/diff

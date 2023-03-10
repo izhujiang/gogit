@@ -27,12 +27,16 @@ func Add(paths []string, option *AddOption) error {
 	return porcelain.Add(paths)
 }
 
+func Remove(paths []string, option *RemoveOption) error {
+	return porcelain.Remove(paths)
+}
+
 func Reset() error {
 	return nil
 }
 
-func Commit() error {
-	return nil
+func Commit(w io.Writer, option *CommitOption) error {
+	return porcelain.Commit(w, (*porcelain.CommitOption)(option))
 }
 
 func Status() error {
@@ -65,8 +69,4 @@ func Log(w io.Writer, commitId string, option *LogOption) error {
 		log.Fatal(err)
 	}
 	return porcelain.Log(w, oid, (*porcelain.LogOption)(option))
-}
-
-func Rm() error {
-	return nil
 }

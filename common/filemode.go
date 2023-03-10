@@ -3,7 +3,6 @@ package common
 import (
 	"encoding/binary"
 	"fmt"
-	"os"
 	"strconv"
 )
 
@@ -64,55 +63,6 @@ func NewFileMode(s string) (FileMode, error) {
 	return FileMode(n), nil
 }
 
-// NewFromOSFileMode returns the FileMode used by git to represent
-// the provided file system modes and a nil error on success.  If the
-// file system mode cannot be mapped to any valid git mode (as with
-// sockets or named pipes), it will return Empty and an error.
-//
-// Note that some git modes cannot be generated from os.FileModes, like
-// Deprecated and Submodule; while Empty will be returned, along with an
-// error, only when the method fails.
-func NewFromOSFileMode(m os.FileMode) (FileMode, error) {
-	if m.IsRegular() {
-		if isSetTemporary(m) {
-			return Empty, fmt.Errorf("no equivalent git mode for %s", m)
-		}
-		if isSetCharDevice(m) {
-			return Empty, fmt.Errorf("no equivalent git mode for %s", m)
-		}
-		if isSetUserExecutable(m) {
-			return Executable, nil
-		}
-		return Regular, nil
-	}
-
-	if m.IsDir() {
-		return Dir, nil
-	}
-
-	if isSetSymLink(m) {
-		return Symlink, nil
-	}
-
-	return Empty, fmt.Errorf("no equivalent git mode for %s", m)
-}
-
-func isSetCharDevice(m os.FileMode) bool {
-	return m&os.ModeCharDevice != 0
-}
-
-func isSetTemporary(m os.FileMode) bool {
-	return m&os.ModeTemporary != 0
-}
-
-func isSetUserExecutable(m os.FileMode) bool {
-	return m&0100 != 0
-}
-
-func isSetSymLink(m os.FileMode) bool {
-	return m&os.ModeSymlink != 0
-}
-
 // Bytes return a slice of 4 bytes with the mode in little endian
 // encoding.
 func (m FileMode) Bytes() []byte {
@@ -159,31 +109,4 @@ func (m FileMode) IsFile() bool {
 		m == Deprecated ||
 		m == Executable ||
 		m == Symlink
-}
-
-// ToOSFileMode returns the os.FileMode to be used when creating file
-// system elements with the given git mode and a nil error on success.
-//
-// When the provided mode cannot be mapped to a valid file system mode
-// (e.g.  Submodule) it returns os.FileMode(0) and an error.
-//
-// The returned file mode does not take into account the umask.
-func (m FileMode) ToOSFileMode() (os.FileMode, error) {
-	switch m {
-	case Dir:
-		return os.ModePerm | os.ModeDir, nil
-	case Submodule:
-		return os.ModePerm | os.ModeDir, nil
-	case Regular:
-		return os.FileMode(0644), nil
-	// Deprecated is no longer allowed: treated as a Regular instead
-	case Deprecated:
-		return os.FileMode(0644), nil
-	case Executable:
-		return os.FileMode(0755), nil
-	case Symlink:
-		return os.ModePerm | os.ModeSymlink, nil
-	}
-
-	return os.FileMode(0), fmt.Errorf("malformed mode (%s)", m)
 }

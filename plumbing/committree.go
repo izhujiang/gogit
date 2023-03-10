@@ -2,7 +2,6 @@ package plumbing
 
 import (
 	"fmt"
-	"io"
 	"time"
 
 	"github.com/izhujiang/gogit/common"
@@ -11,12 +10,14 @@ import (
 )
 
 type CommitTreeOption struct {
-	Parents []string
+	// the id of a parent commit object
+	Parents []common.Hash
+	// A paragraph in the commit log message.
 	Message string
 }
 
 // Reads tree information into the index.
-func CommitTree(w io.Writer, tree common.Hash, option *CommitTreeOption) error {
+func CommitTree(tree common.Hash, option *CommitTreeOption) (common.Hash, error) {
 	t := time.Now()
 	u := t.Unix()
 	if u < 0 {
@@ -28,10 +29,7 @@ func CommitTree(w io.Writer, tree common.Hash, option *CommitTreeOption) error {
 	// TODO: using config info
 	author := fmt.Sprintf("%s %s", email, s)
 	committer := fmt.Sprintf("%s %s", email, s)
-	parents := make([]common.Hash, len(option.Parents))
-	for i, p := range option.Parents {
-		parents[i], _ = common.NewHash(p)
-	}
+	parents := option.Parents
 
 	c := object.NewCommit(
 		common.ZeroHash,
@@ -47,6 +45,5 @@ func CommitTree(w io.Writer, tree common.Hash, option *CommitTreeOption) error {
 
 	repo.Put(c.Id(), g)
 
-	fmt.Fprintf(w, "%s\n", c.Id())
-	return nil
+	return c.Id(), nil
 }

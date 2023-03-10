@@ -20,7 +20,8 @@ const (
 type Workspace struct {
 	repository   *Repository
 	stageingArea *StagingArea
-	WorkingArea  *WorkingArea
+	workingArea  *WorkingArea
+	references   *References
 }
 
 var lock = &sync.Mutex{}
@@ -37,7 +38,11 @@ func GetWorkspace() (*Workspace, error) {
 				stageingArea: &StagingArea{
 					path: filepath.Join(repositoryRoot, "index"),
 				},
-				WorkingArea: &WorkingArea{},
+				workingArea: &WorkingArea{},
+				references: &References{
+					root:     repositoryRoot,
+					headpath: filepath.Join(repositoryRoot, "HEAD"),
+				},
 			}
 		}
 	}
@@ -67,4 +72,9 @@ func GetRepository() *Repository {
 func GetStagingArea() *StagingArea {
 	w, _ := GetWorkspace()
 	return w.stageingArea
+}
+
+func GetReferencs() *References {
+	w, _ := GetWorkspace()
+	return w.references
 }

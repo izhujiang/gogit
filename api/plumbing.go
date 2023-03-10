@@ -92,7 +92,9 @@ func UpdateIndex(option *UpdateIndexOption) error {
 }
 
 func WriteTree(w io.Writer, option *WriteTreeOption) error {
-	return plumbing.WriteTree(w, (*plumbing.WriteTreeOption)(option))
+	tid, err := plumbing.WriteTree((*plumbing.WriteTreeOption)(option))
+	fmt.Fprintf(w, "%s\n", tid)
+	return err
 }
 
 func ReadTree(w io.Writer, treeId string, option *ReadTreeOption) error {
@@ -110,5 +112,21 @@ func CommitTree(w io.Writer, treeId string, option *CommitTreeOption) error {
 		log.Fatal(err)
 	}
 
-	return plumbing.CommitTree(w, oid, (*plumbing.CommitTreeOption)(option))
+	parents := make([]common.Hash, 0, len(option.Parents))
+	for _, p := range option.Parents {
+		pid, err := common.NewHash(p)
+		if err == nil {
+			parents = append(parents, pid)
+		}
+	}
+
+	cto := &plumbing.CommitTreeOption{
+		Parents: parents,
+		Message: option.Message,
+	}
+
+	commitId, err := plumbing.CommitTree(oid, cto)
+	w.Write([]byte(commitId.String()))
+
+	return err
 }

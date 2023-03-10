@@ -52,7 +52,7 @@ func (s *StagingArea) Stage(filepaths []string) error {
 	return nil
 }
 
-func (s *StagingArea) Unstage(path string) {
+func (s *StagingArea) Unstage(paths []string) {
 	panic("Not implemented")
 }
 
@@ -128,7 +128,7 @@ func (s *StagingArea) WriteTree() (common.Hash, error) {
 
 	treeId, err := idx.WriteTree(saveTree)
 	if err != nil {
-		log.Fatal(err)
+		return treeId, err
 	}
 
 	idx.SaveIndex(s.path)

@@ -50,9 +50,10 @@ func NewTreeEntry(id common.Hash, name string, mode common.FileMode) TreeEntry {
 	switch mode {
 	case common.Dir:
 		te = NewTree(id, name)
-	case common.Regular:
+	case common.Regular, common.Executable:
 		te = NewBlob(id, name, nil)
 	default:
+		fmt.Println("id: ", id, " name: ", name)
 		panic("Not implemented.")
 	}
 
