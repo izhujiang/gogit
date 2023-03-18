@@ -31,13 +31,14 @@ import (
 // writeTreeCmd represents the writeTree command
 var writeTreeCmd = &cobra.Command{
 	Use:   "write-tree",
-	Short: "A brief description of your command",
-	Long: `A longer description that spans multiple lines and likely contains examples
-and usage of using your command. For example:
+	Short: "Create a tree object from the current index",
+	Long: `Creates a tree object using the current index. The name of the new tree object is printed to standard
+output.
 
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
+The index must be in a fully merged state.
+
+Conceptually, git write-tree sync()s the current index contents into a set of tree files. In order to have that match what is actually in your directory right now, you need to have done a git update-index phase before you did the git write-tree.
+`,
 	Run: func(cmd *cobra.Command, args []string) {
 		w := os.Stdout
 		option := &git.WriteTreeOption{}

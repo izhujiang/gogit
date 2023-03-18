@@ -20,16 +20,15 @@ func LsTree(w io.Writer, oid common.Hash, option *LsTreeOption) error {
 	repo := core.GetRepository()
 
 	gObj, err := repo.Get(oid)
-	if gObj.Type() == object.ObjectTypeTree {
+	if gObj.Kind() == object.Kind_Tree {
 		if option.Recurse == false {
-			tree := object.EmptyTree()
-			tree.FromGitObject(gObj)
+			tree := object.GitObjectToTree(gObj)
 			fmt.Fprintln(w, tree.Content())
 		} else {
 			panic("ls-tree recursively not implemented")
 		}
 	} else {
-		log.Fatal("Invalid tree: ", gObj.Type().String(), " ", oid.String())
+		log.Fatal("Invalid tree: ", gObj.Kind(), " ", oid)
 	}
 
 	return err

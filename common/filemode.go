@@ -1,16 +1,25 @@
 package common
 
 import (
-	"encoding/binary"
 	"fmt"
+	"io/fs"
 	"strconv"
 )
 
-// A FileMode represents the kind of tree entries used by git. It
-// resembles regular file systems modes, although FileModes are
-// considerably simpler (there are not so many), and there are some,
-// like Submodule that has no file system equivalent.
-type FileMode uint32
+//import (
+//	"encoding/binary"
+//	"fmt"
+//	"strconv"
+//)
+
+type FileMode = fs.FileMode
+type FileInfo = fs.FileInfo
+
+//// A FileMode represents the kind of tree entries used by git. It
+//// resembles regular file systems modes, although FileModes are
+//// considerably simpler (there are not so many), and there are some,
+//// like Submodule that has no file system equivalent.
+//type FileMode uint32
 
 const (
 	// Empty is used as the FileMode of tree elements when comparing
@@ -63,18 +72,22 @@ func NewFileMode(s string) (FileMode, error) {
 	return FileMode(n), nil
 }
 
-// Bytes return a slice of 4 bytes with the mode in little endian
-// encoding.
-func (m FileMode) Bytes() []byte {
-	ret := make([]byte, 4)
-	binary.LittleEndian.PutUint32(ret, uint32(m))
-	return ret
+func FileModeToString(m FileMode) string {
+	return fmt.Sprintf("%06o", uint32(m))
 }
+
+//// Bytes return a slice of 4 bytes with the mode in little endian
+//// encoding.
+//func (m FileMode) Bytes() []byte {
+//	ret := make([]byte, 4)
+//	binary.LittleEndian.PutUint32(ret, uint32(m))
+//	return ret
+//}
 
 // IsMalformed returns if the FileMode should not appear in a git packfile,
 // this is: Empty and any other mode not mentioned as a constant in this
 // package.
-func (m FileMode) IsMalformed() bool {
+func IsMalformed(m FileMode) bool {
 	return m != Dir &&
 		m != Regular &&
 		m != Deprecated &&
@@ -83,30 +96,34 @@ func (m FileMode) IsMalformed() bool {
 		m != Submodule
 }
 
-// String returns the FileMode as a string in the standatd git format,
-// this is, an octal number padded with ceros to 7 digits.  Malformed
-// modes are printed in that same format, for easier debugging.
-//
-// Example: Regular is "0100644", Empty is "0000000".
-func (m FileMode) String() string {
-	return fmt.Sprintf("%07o", uint32(m))
-	// return fmt.Sprintf("%06o", uint32(m))
-}
+//// String returns the FileMode as a string in the standatd git format,
+//// this is, an octal number padded with ceros to 7 digits.  Malformed
+//// modes are printed in that same format, for easier debugging.
+////
+//// Example: Regular is "0100644", Empty is "0000000".
+//func (m FileMode) String() string {
+//	return fmt.Sprintf("%07o", uint32(m))
+//	// return fmt.Sprintf("%06o", uint32(m))
+//}
 
 // IsRegular returns if the FileMode represents that of a regular file,
 // this is, either Regular or Deprecated.  Please note that Executable
 // are not regular even though in the UNIX tradition, they usually are:
 // See the IsFile method.
-func (m FileMode) IsRegular() bool {
+func IsRegular(m FileMode) bool {
 	return m == Regular ||
 		m == Deprecated
 }
 
 // IsFile returns if the FileMode represents that of a file, this is,
 // Regular, Deprecated, Executable or Link.
-func (m FileMode) IsFile() bool {
+func IsFile(m FileMode) bool {
 	return m == Regular ||
 		m == Deprecated ||
 		m == Executable ||
 		m == Symlink
+}
+
+func IsDir(m FileMode) bool {
+	return m == Dir
 }

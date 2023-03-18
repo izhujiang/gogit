@@ -19,22 +19,22 @@ func Show(w io.Writer, oid common.Hash) error {
 	// TODO: need to be refactored
 	repo := core.GetRepository()
 
-	gObj, err := repo.Get(oid)
-	var entity object.GitEntity
-	switch gObj.Type() {
-	case object.ObjectTypeBlob:
-		entity = object.EmptyBlob()
-	case object.ObjectTypeTree:
-		entity = object.EmptyTree()
-	case object.ObjectTypeCommit:
-		entity = object.EmptyCommit()
-	case object.ObjectTypeTag:
+	g, err := repo.Get(oid)
+	switch g.Kind() {
+	case object.Kind_Blob:
+		blob := object.GitObjectToBlob(g)
+		fmt.Fprintln(w, blob.Content())
+	case object.Kind_Tree:
+		tree := object.GitObjectToTree(g)
+		fmt.Fprintln(w, tree.Content())
+	case object.Kind_Commit:
+		commit := object.GitObjectToCommit(g)
+		fmt.Fprintln(w, commit.Content())
+	case object.Kind_Tag:
 		panic("Not implemented")
 	default:
 		panic("Not implemented")
 	}
-	entity.FromGitObject(gObj)
-	fmt.Fprintln(w, entity.Content())
 
 	return err
 }

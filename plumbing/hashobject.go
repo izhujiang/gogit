@@ -9,7 +9,7 @@ import (
 )
 
 type HashObjectOption struct {
-	ObjectType object.ObjectType
+	ObjectType object.ObjectKind
 	Write      bool
 }
 

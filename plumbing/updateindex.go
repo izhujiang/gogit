@@ -29,7 +29,7 @@ func UpdateIndex(option *UpdateIndexOption) error {
 			defer f.Close()
 
 			hoOption := &HashObjectOption{
-				ObjectType: object.ObjectTypeBlob,
+				ObjectType: object.Kind_Blob,
 				Write:      true,
 			}
 			oid, err := HashObject(f, hoOption)

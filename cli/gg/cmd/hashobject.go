@@ -37,13 +37,11 @@ var (
 // hashObjectCmd represents the hashObject command
 var hashObjectCmd = &cobra.Command{
 	Use:   "hash-object",
-	Short: "A brief description of your command",
-	Long: `A longer description that spans multiple lines and likely contains examples
-and usage of using your command. For example:
-
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
+	Short: "Compute object ID and optionally creates a blob from a file",
+	Long: `Computes the object ID value for an object with specified type with the contents of the named
+file (which can be outside of the work tree), and optionally writes the resulting object into the
+object database. Reports its object ID to its standard output. When <type> is not specified, it
+defaults to "blob".`,
 	Run: func(cmd *cobra.Command, args []string) {
 		// fmt.Println("hashObject called")
 		option := &git.HashObjectOption{

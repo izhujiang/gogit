@@ -22,7 +22,7 @@ func Log(w io.Writer, oid common.Hash, option *LogOption) error {
 		log.Fatal(err)
 	}
 
-	if gObj.Type() == object.ObjectTypeCommit {
+	if gObj.Kind() == object.Kind_Commit {
 
 		commit := object.EmptyCommit()
 		commit.FromGitObject(gObj)

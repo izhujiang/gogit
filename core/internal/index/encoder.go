@@ -72,40 +72,41 @@ func encodeHeader(w io.Writer, idx *Index) {
 
 func encodeIndexEntries(w io.Writer, idx *Index) {
 	encodeIndexEntry := func(entry *IndexEntry) {
-		c_sec, c_nsec, _ := timeToUint32(entry.CTime)
-		m_sec, m_nsec, _ := timeToUint32(entry.MTime)
+		c_sec, c_nsec, _ := timeToUint32(entry.cTime)
+		m_sec, m_nsec, _ := timeToUint32(entry.mTime)
 
-		Write(w, c_sec)
-		Write(w, c_nsec)
-		Write(w, m_sec)
-		Write(w, m_nsec)
+		Write(w, uint32(c_sec))
+		Write(w, uint32(c_nsec))
+		Write(w, uint32(m_sec))
+		Write(w, uint32(m_nsec))
 
-		Write(w, entry.Dev)
-		Write(w, entry.Ino)
-		Write(w, entry.Mode)
+		Write(w, uint32(entry.dev))
+		Write(w, uint32(entry.ino))
+		Write(w, uint32(entry.mode))
 
-		Write(w, entry.Uid)
-		Write(w, entry.Gid)
-		Write(w, entry.Size)
-		Write(w, entry.Oid[:])
+		Write(w, uint32(entry.uid))
+		Write(w, uint32(entry.gid))
+		Write(w, uint32(entry.size))
+		Write(w, entry.oid[:])
 
-		flags := uint16(entry.Stage&0x3) << 12
-		if l := len(entry.Filepath); l < maskFlagNameLength {
+		var flags uint16
+		flags = uint16(entry.stage&0x3) << 12
+		if l := len(entry.filepath); l < maskFlagNameLength {
 			flags |= uint16(l)
 		} else {
 			flags |= 0x0FFF
 		}
 
-		Write(w, flags)
+		Write(w, uint16(flags))
 
 		entry_fixed_size := 62
 
-		if entry.IntentToAdd || entry.Skipworktree {
+		if entry.intentToAdd || entry.skipworktree {
 			var ext_flags uint16
-			if entry.IntentToAdd {
+			if entry.intentToAdd {
 				ext_flags |= maskExtflagIntentToAdd
 			}
-			if entry.Skipworktree {
+			if entry.skipworktree {
 				ext_flags |= maskExtflagSkipWorktree
 			}
 
@@ -113,10 +114,10 @@ func encodeIndexEntries(w io.Writer, idx *Index) {
 			entry_fixed_size += 2
 		}
 
-		WriteString(w, entry.Filepath)
+		WriteString(w, entry.filepath)
 
 		if idx.version == idx_version_2 || idx.version == idx_version_3 {
-			entrySize := entry_fixed_size + len(entry.Filepath)
+			entrySize := entry_fixed_size + len(entry.filepath)
 			padLen := 8 - entrySize%8
 			pad := make([]byte, padLen)
 			Write(w, pad)

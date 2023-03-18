@@ -11,7 +11,7 @@ import (
 type DirEntry interface {
 	/* TODO: add methods */
 	Id() common.Hash
-	Type() object.ObjectType
+	Type() object.ObjectKind
 	Name() string
 	Size() int
 	Content() []byte

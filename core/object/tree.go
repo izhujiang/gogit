@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"io/fs"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -18,22 +20,19 @@ const (
 )
 
 // 100644 blob ec1871edcbfdc0d17ef498030e7ca676f291393d	LICENSE
-//
-//	type TreeEntry struct {
-//		// Id of subtree or blob,  which this entry refer to
-//		Oid  common.Hash
-//		Name string
-//		Type ObjectType
-//		Mode common.FileMode
-//	}
-
-// Blob and Tree Object both implemente TreeEntry interface
+// // Blob and Tree Object both implemente TreeEntry interface
 type TreeEntry interface {
-	Id() common.Hash
-	Name() string
-	Type() ObjectType
-	Mode() common.FileMode
+	Object
+	fs.DirEntry
 }
+
+// type DirEntry interface {
+// 	Name() string
+// 	IsDir() bool
+
+// 	Type() FileMode
+// 	Info() (FileInfo, error)
+// }
 
 type TreeEntryCollection []TreeEntry
 
@@ -42,16 +41,17 @@ func newTreeEntryCollecion() TreeEntryCollection {
 	return tc
 }
 
-func NewTreeEntry(id common.Hash, name string, mode common.FileMode) TreeEntry {
+func NewTreeEntry(id common.Hash, name string, filemode common.FileMode) TreeEntry {
 	// var oid common.Hash
 	// copy(oid[:], refId[:])
 	var te TreeEntry
 
-	switch mode {
-	case common.Dir:
-		te = NewTree(id, name)
-	case common.Regular, common.Executable:
-		te = NewBlob(id, name, nil)
+	kind := FileModeToObjectKind(filemode)
+	switch kind {
+	case Kind_Blob:
+		te = NewBlob(id, name, filemode, nil)
+	case Kind_Tree:
+		te = NewTree(id, name, filemode)
 	default:
 		fmt.Println("id: ", id, " name: ", name)
 		panic("Not implemented.")
@@ -72,65 +72,63 @@ func NewTreeEntry(id common.Hash, name string, mode common.FileMode) TreeEntry {
 // 100644 blob c6f955f3bb3aef39ac5d4ea2ca9674925a5c7c4e	go.sum
 // 040000 tree c227a45a113be8f4482478d1f50a5eacde773371	plumbing
 // 040000 tree 249696c6cb1ef790ccd683a6bcc704cdc5b97db5	porcelain
+
+// Tree Object, implements Interface TreeEntry{ Object, fs.DirEntry}
 type Tree struct {
 	// Hash ID
-	oid common.Hash
+	GitObject
 	// fullpath string
 	name string
 
+	filemode common.FileMode
+
 	// TODO: make sure entries ordered by name
-	// entries map[string]*TreeEntry
 	entries TreeEntryCollection
 }
 
-func (t *Tree) Id() common.Hash {
-	h := t.oid
-	return h
-}
-
-func (t *Tree) SetId(oid common.Hash) {
-	t.oid = oid
-}
-
 func (t *Tree) Name() string {
-	// name := filepath.Base(t.fullpath)
-	// if name == "." {
-	// return ""
-	// }
 	return t.name
 }
 
+func (t *Tree) IsDir() bool {
+	return true
+}
+
+func (t *Tree) Type() common.FileMode {
+	return t.filemode
+}
+
+func (t *Tree) EntryCount() int {
+	return len(t.entries)
+}
+
+// Info returns the FileInfo for the file or subdirectory described by the entry.
+// The returned FileInfo may be from the time of the original directory read
+// or from the time of the call to Info. If the file has been removed or renamed
+// since the directory read, Info may return an error satisfying errors.Is(err, ErrNotExist).
+// If the entry denotes a symbolic link, Info reports the information about the link itself,
+// not the link's target.
+func (t *Tree) Info() (fs.FileInfo, error) {
+	info := &GitObjectInfo{}
+	return info, nil
+}
+
+func (t *Tree) ZeroId() {
+	t.oid = common.ZeroHash
+}
 func (t *Tree) SetName(name string) {
 	t.name = name
 }
 
-// func (t *Tree) SetPath(path string) {
-// 	t.fullpath = filepath.Clean(path)
-// }
-
-// func (t *Tree) Path() string {
-// 	return t.fullpath
-// }
-
-func (t *Tree) Type() ObjectType {
-	return ObjectTypeTree
-}
-
-func (t *Tree) Mode() common.FileMode {
-	return common.Dir
-}
-
-func NewTree(oid common.Hash, name string) *Tree {
-	// path = filepath.Clean(path)
-	// if path == "." {
-	// path = ""
-	// }
-
+func NewTree(oid common.Hash, name string, filemode common.FileMode) *Tree {
 	return &Tree{
-		oid: oid,
-		// fullpath: path,
-		name:    name,
-		entries: newTreeEntryCollecion(),
+		GitObject: GitObject{
+			oid:        oid,
+			objectKind: Kind_Tree,
+		},
+		name:     name,
+		filemode: filemode,
+		entries:  newTreeEntryCollecion(),
 	}
 }
 func EmptyTree() *Tree {
@@ -139,17 +137,21 @@ func EmptyTree() *Tree {
 	}
 }
 
-type VisitTreeEntryFunc func(TreeEntry)
+type WalkTreeEntryFunc func(TreeEntry) error
 
-func (t *Tree) ForEach(fn VisitTreeEntryFunc) {
+func (t *Tree) ForEach(fn WalkTreeEntryFunc) {
 	for _, e := range t.entries {
-		fn(e)
+		err := fn(e)
+
+		if err == filepath.SkipDir {
+			break
+		}
 	}
 }
 
 func (t *Tree) Subtree(subtreeName string) *Tree {
 	for _, e := range t.entries {
-		if e.Type() == ObjectTypeTree && e.Name() == subtreeName {
+		if e.Type() == common.Dir && e.Name() == subtreeName {
 			return e.(*Tree)
 		}
 	}
@@ -165,43 +167,100 @@ func (t *Tree) UpdateOrAddEntry(entry TreeEntry) {
 		}
 	}
 	t.entries = append(t.entries, entry)
+
+	// Invalidate oid when the entries are changed
+	t.oid = common.ZeroHash
 }
 
-func (t *Tree) SortEntries(order entryOrder) {
-	entries := t.entries
-	if order == order_Ascending {
-		sort.SliceStable(entries, func(i, j int) bool {
-			return strings.Compare(entries[i].Name(), entries[j].Name()) < 0
-		})
+func (t *Tree) RemoveEmptyEntries() {
+	es := make([]TreeEntry, 0, t.EntryCount())
+	for _, e := range t.entries {
+		switch e.Kind() {
+		case Kind_Blob:
+			es = append(es, e)
+		case Kind_Tree:
+			subT := e.(*Tree)
+			if subT.EntryCount() != 0 {
+				es = append(es, e)
+			}
+		}
 	}
+	t.entries = es
+
+	// Invalidate oid when the entries are changed
+	t.oid = common.ZeroHash
 }
 
-// TODO: output with format interface
+func (t *Tree) Sort() {
+	// sort entries
+	entries := t.entries
+	// if order == order_Ascending {
+	sort.SliceStable(entries, func(i, j int) bool {
+		return strings.Compare(entries[i].Name(), entries[j].Name()) < 0
+	})
+}
+func (t *Tree) Hash() common.Hash {
+	t.composeContent()
+	return t.GitObject.Hash()
+}
+
 func (t *Tree) Content() string {
 	buf := &bytes.Buffer{}
 	for _, e := range t.entries {
 		// TODO: align the output
-		fmt.Fprintf(buf, "%s %s %s\t%s\n", e.Mode(), e.Type(), e.Id(), e.Name())
+		// o := e.(Object)
+		fmt.Fprintf(buf, "%s %s %s\t%s\n", common.FileModeToString(e.Type()), e.Kind(), e.Id(), e.Name())
 	}
 
 	return string(buf.Bytes())
 }
 
-// GitObject <==> Tree
+// GitObject ==> Tree,fitll Tree using GotObject from repository
 func (t *Tree) FromGitObject(g *GitObject) {
-	r := bytes.NewBuffer(g.content)
+	t.GitObject = *g
+	t.parseContent()
+}
+
+func GitObjectToTree(g *GitObject) *Tree {
+	t := &Tree{
+		GitObject: *g,
+	}
+	t.parseContent()
+
+	return t
+}
+
+func (t *Tree) Serialize(w io.Writer) error {
+	t.composeContent()
+
+	return t.GitObject.Serialize(w)
+}
+
+func (t *Tree) Deserialize(r io.Reader) error {
+	err := t.GitObject.Deserialize(r)
+
+	if err != nil {
+		return err
+	}
+
+	t.parseContent()
+	return nil
+}
+
+func (t *Tree) parseContent() {
+	buf := bytes.NewBuffer(t.content)
 	entries := newTreeEntryCollecion()
 
 	for {
-		mode, err := r.ReadString(0x20)
+		mode, err := buf.ReadString(common.SPACE)
 		mode = strings.Trim(mode, " ")
 		if err == io.EOF {
 			break
 		}
-		name, _ := r.ReadBytes(0x00)
+		name, _ := buf.ReadBytes(common.NUL)
 		fileName := string(name[:len(name)-1])
 		var oid common.Hash
-		_, _ = r.Read(oid[:])
+		_, _ = buf.Read(oid[:])
 
 		fm, _ := common.NewFileMode(mode)
 		// entry := NewTreeEntry(oid, filepath.Join(t.fullpath, fileName), fm)
@@ -210,30 +269,21 @@ func (t *Tree) FromGitObject(g *GitObject) {
 		entries = append(entries, entry)
 	}
 
-	t.oid = g.Hash()
 	t.entries = entries
 }
 
-func (t *Tree) ToGitObject() *GitObject {
-	w := &bytes.Buffer{}
+func (t *Tree) composeContent() {
+	buf := &bytes.Buffer{}
 
 	entries := t.entries
-	for _, entry := range entries {
-		mode := strings.TrimLeft(entry.Mode().String(), "0 ")
-		w.WriteString(mode)
-		w.WriteByte(0x20)
-		w.WriteString(entry.Name())
-		w.WriteByte(0x00)
-		id := entry.Id()
-		w.Write(id[:])
+	for _, e := range entries {
+		mode := strings.TrimLeft(common.FileModeToString(e.Type()), "0 ")
+		buf.WriteString(mode)
+		buf.WriteByte(common.SPACE)
+		buf.WriteString(e.Name())
+		buf.WriteByte(common.NUL)
+		id := e.Id()
+		buf.Write(id[:])
 	}
-
-	content := w.Bytes()
-
-	g := &GitObject{
-		objectType: ObjectTypeTree,
-		size:       int64(len(content)),
-		content:    content,
-	}
-	return g
+	t.content = buf.Bytes()
 }

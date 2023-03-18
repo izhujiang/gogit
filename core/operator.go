@@ -10,7 +10,7 @@ import (
 	"github.com/izhujiang/gogit/core/object"
 )
 
-func HashObjectFromPath(path string, oType object.ObjectType, save bool) (common.Hash, error) {
+func HashObjectFromPath(path string, oType object.ObjectKind, save bool) (common.Hash, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return common.ZeroHash, err
@@ -20,7 +20,7 @@ func HashObjectFromPath(path string, oType object.ObjectType, save bool) (common
 	return HashObjectFromReader(f, oType, save)
 }
 
-func HashObjectFromReader(r io.Reader, oType object.ObjectType, save bool) (common.Hash, error) {
+func HashObjectFromReader(r io.Reader, oType object.ObjectKind, save bool) (common.Hash, error) {
 	h, gObj, err := hashObject(r, oType)
 
 	if save {
@@ -32,14 +32,14 @@ func HashObjectFromReader(r io.Reader, oType object.ObjectType, save bool) (comm
 	return h, err
 }
 
-func hashObject(r io.Reader, t object.ObjectType) (common.Hash, *object.GitObject, error) {
+func hashObject(r io.Reader, t object.ObjectKind) (common.Hash, *object.GitObject, error) {
 	buf := &bytes.Buffer{}
 	_, err := buf.ReadFrom(r)
 	if err != nil {
 		log.Fatal(err)
 	}
 	g := object.NewGitObject(t, buf.Bytes())
-	h := g.Hash()
+	h := g.Id()
 
 	return h, g, err
 }

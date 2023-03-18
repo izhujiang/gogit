@@ -132,25 +132,21 @@ func (idx *Index) FindIndexEntry(path string) *IndexEntry {
 	return idx.find(path)
 }
 
+// func (idx *Index) UpdateOrInsertIndexEntry(entry *IndexEntry, updateCacheTree bool) {
 func (idx *Index) UpdateOrInsertIndexEntry(entry *IndexEntry) {
-	idx.updateOrInsert(entry)
+	idx.updateOrAppend(entry)
 	idx.numberOfIndexEntries = uint32(idx.size())
 
 	if idx.cacheTree != nil {
-		idx.cacheTree.invalidatePath(entry.Filepath)
+		idx.cacheTree.invalidatePath(entry.filepath)
 	}
 }
 
+// func (idx *Index) RemoveIndexEntry(path string, updateCacheTree bool) {
 func (idx *Index) RemoveIndexEntry(path string) {
 	idx.remove(path)
 	idx.numberOfIndexEntries = uint32(idx.size())
 
-	if idx.cacheTree != nil {
-		idx.cacheTree.invalidatePath(path)
-	}
-}
-
-func (idx *Index) InvalidatePathInCacheTree(path string) {
 	if idx.cacheTree != nil {
 		idx.cacheTree.invalidatePath(path)
 	}
@@ -169,30 +165,23 @@ func (idx *Index) WriteTree(saveTreeFn object.WalkFunc) (common.Hash, error) {
 
 	// idx.cacheTree.Debug()
 
-	// setup treeCollection
 	idx.foreach(func(e *IndexEntry) {
-		dir := filepath.Dir(e.Filepath)
-		filename := filepath.Base(e.Filepath)
+		dir := filepath.Dir(e.filepath)
+		filename := filepath.Base(e.filepath)
 
 		// make tree or return the existed tree
 		t := idx.cacheTree.MakeTreeAll(dir)
-		t.UpdateOrAddEntry(object.NewTreeEntry(e.Oid, filename, common.Regular))
+		t.UpdateOrAddEntry(object.NewTreeEntry(e.oid, filename, common.Regular))
 	})
 
 	// Hash the tree with hash-code from cacheTree or fn(SaveTreeFunc)
-	idx.cacheTree.DFWalk(func(path string, t *object.Tree) {
-		// fmt.Println("before updating current tree: ", path, t.Id(), t.Name())
-		if idx.cacheTree != nil {
-			if t.Id() == common.ZeroHash {
-				saveTreeFn(t)
-				// fmt.Println("after updating current tree: ", t.Id(), t.Name())
-			} else {
-				// just skip
-			}
-
-			// fmt.Println("current tree: ", t.Id(), t.Name())
-			// fmt.Println(t.Content())
+	idx.cacheTree.DFWalk(func(path string, t *object.Tree) error {
+		if t.Id() == common.ZeroHash {
+			t.Sort()
+			saveTreeFn(t)
 		}
+
+		return nil
 	}, false)
 
 	// idx.cacheTree.refreshCacheTreeEntries()
@@ -200,23 +189,26 @@ func (idx *Index) WriteTree(saveTreeFn object.WalkFunc) (common.Hash, error) {
 }
 
 // ReadTrees read all the expanded trees from TreeCollection and put them into cacheTree
-func (idx *Index) ReadTrees(trees *object.TreeCollection, saveTreeFn object.WalkFunc) error {
+func (idx *Index) ReadTrees(trees *object.TreeFs, saveTreeFn object.WalkFunc) error {
 	// add index entries
 	errMsg := &bytes.Buffer{}
-	trees.DFWalk(func(path string, t *object.Tree) {
-		t.ForEach(func(e object.TreeEntry) {
-			if e.Type() == object.ObjectTypeBlob {
+	trees.DFWalk(func(path string, t *object.Tree) error {
+		t.ForEach(func(e object.TreeEntry) error {
+			if e.Kind() == object.Kind_Blob {
 				fullfilepath := filepath.Join(path, e.Name())
 				idxEntry := idx.find(fullfilepath)
 				if idxEntry == nil {
-					idxEntry = NewIndexEntry(e.Id(), e.Mode(), fullfilepath)
-					// fmt.Println("insert entry:", idxEntry)
-					idx.updateOrInsert(idxEntry)
+					idxEntry = NewIndexEntry(e.Id(), e.Type(), fullfilepath)
+					idx.append(idxEntry)
 				} else {
 					fmt.Fprintf(errMsg, "Entry '%s' overlaps with '%s'.  Cannot bind.\n", fullfilepath, fullfilepath)
 				}
 			}
+
+			return nil
 		})
+
+		return nil
 	}, true)
 	idx.numberOfIndexEntries = uint32(idx.size())
 
@@ -228,41 +220,46 @@ func (idx *Index) ReadTrees(trees *object.TreeCollection, saveTreeFn object.Walk
 	// add new cachetree entries from the read trees
 	if idx.cacheTree == nil {
 		idx.cacheTree = newCacheTree()
-		idx.cacheTree.buildTrees()
-		// idx.cacheTree.InitWithRoot(trees.Root())
+		// 	// idx.cacheTree.buildTreeFs()
 	}
 
-	// setup treeCollection
-	idx.foreach(func(e *IndexEntry) {
-		dir := filepath.Dir(e.Filepath)
-		filename := filepath.Base(e.Filepath)
+	// // setup treeFs
+	// idx.foreach(func(e *IndexEntry) {
+	// 	dir := filepath.Dir(e.filepath)
+	// 	filename := filepath.Base(e.filepath)
 
-		// make tree or return the existed tree
-		t := idx.cacheTree.MakeTreeAll(dir)
-		t.UpdateOrAddEntry(object.NewTreeEntry(e.Oid, filename, common.Regular))
-	})
+	// 	// make tree or return the existed tree
+	// 	t := idx.cacheTree.MakeTreeAll(dir)
+	// 	t.UpdateOrAddEntry(object.NewTreeEntry(e.oid, filename, common.Regular))
+	// })
 
+	fmt.Println("before mrege cachetree")
+	idx.cacheTree.Debug()
+
+	fmt.Println("before mrege trees:")
+	trees.Debug()
 	idx.cacheTree.Merge(trees)
 
-	// Hash the tree with hash-code from cacheTree or fn(SaveTreeFunc)
-	idx.cacheTree.DFWalk(func(path string, t *object.Tree) {
-		// fmt.Println("before updating current tree: ", path, t.Id(), t.Name())
-		if idx.cacheTree != nil {
-			if t.Id() == common.ZeroHash {
-				saveTreeFn(t)
-				// fmt.Println("after updating current tree: ", t.Id(), t.Name())
-			} else {
-				// just skip
-			}
+	fmt.Println("after mrege cachetree")
+	idx.cacheTree.Debug()
 
-			// fmt.Println("current tree: ", t.Id(), t.Name())
-			// fmt.Println(t.Content())
+	// Hash the tree with hash-code from cacheTree or fn(SaveTreeFunc)
+	idx.cacheTree.DFWalk(func(path string, t *object.Tree) error {
+		// fmt.Println("before updating current tree: ", path, t.Id(), t.Name())
+		if t.Id() == common.ZeroHash {
+			t.Sort()
+			saveTreeFn(t)
+			// fmt.Println("after updating current tree: ", t.Id(), t.Name())
+		} else {
+			// just skip
 		}
+
+		// fmt.Println("current tree: ", t.Id(), t.Name())
+		// fmt.Println(t.Content())
+
+		return nil
 	}, false)
 
-	// idx.cacheTree.refreshCacheTreeEntries()
-
-	// idx.cacheTree.Debug()
 	return nil
 }
 

@@ -14,7 +14,6 @@ func WriteTree(option *WriteTreeOption) (common.Hash, error) {
 	sa := core.GetStagingArea()
 	tid, err := sa.WriteTree()
 
-	// fmt.Fprintln(w, "Tree Id:")
 	// fmt.Fprintf(w, "%s\n", tid)
 	return tid, err
 }

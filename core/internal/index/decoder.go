@@ -6,6 +6,7 @@ import (
 	"crypto/sha1"
 	"fmt"
 	"io"
+	"path/filepath"
 	"strconv"
 	"time"
 
@@ -92,8 +93,8 @@ func decodeIndexEntries(r *bufio.Reader, idx *Index) error {
 	var size uint32
 	var flags uint16
 	var ext_flags uint16
-	var filename []byte
-	var filenameLength int
+	var fpath []byte
+	var fpathLength int
 	for i := 0; i < int(idx.numberOfIndexEntries); i++ {
 		c_sec, _ = ReadUint32(r)
 		c_nsec, _ = ReadUint32(r)
@@ -101,12 +102,10 @@ func decodeIndexEntries(r *bufio.Reader, idx *Index) error {
 		m_nsec, _ = ReadUint32(r)
 		dev, _ = ReadUint32(r)
 		ino, _ = ReadUint32(r)
-
 		mode, _ = ReadUint32(r)
 		uid, _ = ReadUint32(r)
 		gid, _ = ReadUint32(r)
 		size, _ = ReadUint32(r)
-
 		oid, _ := ReadHash(r)
 		flags, _ = ReadUint16(r)
 
@@ -129,45 +128,46 @@ func decodeIndexEntries(r *bufio.Reader, idx *Index) error {
 			}
 		}
 
-		filenameLength = int(flags & maskFlagNameLength)
+		fpathLength = int(flags & maskFlagNameLength)
 
 		// read path
 		if idx.version == idx_version_2 || idx.version == idx_version_3 {
 			// ReadBytes include 0x00
-			filename, _ = ReadUntil(r, sep_NULL)
+			fpath, _ = ReadUntil(r, sep_NULL)
 			// TODO: compare the length of filename with filenameLength
 			// OR read filenameLength bytes from io.Reader
-			overflow := (entry_fixed_size + len(filename) + 1) % 8
+			overflow := (entry_fixed_size + len(fpath) + 1) % 8
 			if overflow != 0 {
 				skip := 8 - overflow
 				r.Discard(skip)
-				// empty := make([]byte, skip)
-				// r.Read(empty)
 			}
 		} else { // idx_version_4
-			filename, _ = ReadUntil(r, sep_NULL)
+			fpath, _ = ReadUntil(r, sep_NULL)
 		}
 
-		// validate filename length
-		if (filenameLength < maskFlagNameLength && filenameLength != len(filename)) ||
-			(filenameLength == maskFlagNameLength && len(filename) < maskFlagNameLength) {
+		// validate filepath  length
+		if (fpathLength < maskFlagNameLength && fpathLength != len(fpath)) ||
+			(fpathLength == maskFlagNameLength && len(fpath) < maskFlagNameLength) {
 			return ErrNotOrInvalidIndexFile
 		}
 
 		entry := &IndexEntry{
-			Oid:          oid,
-			Filepath:     string(filename),
-			CTime:        time.Unix(int64(c_sec), int64(c_nsec)),
-			MTime:        time.Unix(int64(m_sec), int64(m_nsec)),
-			Dev:          dev,
-			Ino:          ino,
-			Mode:         common.FileMode(mode),
-			Stage:        Stage(flags >> 12 & 0x3),
-			Uid:          uid,
-			Gid:          gid,
-			Size:         size,
-			Skipworktree: (ext_flags & maskExtflagSkipWorktree) != 0,
-			IntentToAdd:  (ext_flags & maskExtflagIntentToAdd) != 0,
+			oid:      oid,
+			filepath: string(fpath),
+			fileinfo: fileinfo{
+				name:  filepath.Base(string(fpath)),
+				cTime: time.Unix(int64(c_sec), int64(c_nsec)),
+				mTime: time.Unix(int64(m_sec), int64(m_nsec)),
+				dev:   dev,
+				ino:   ino,
+				mode:  common.FileMode(mode),
+				uid:   uid,
+				gid:   gid,
+				size:  size,
+			},
+			stage:        Stage(flags >> 12 & 0x3),
+			skipworktree: (ext_flags & maskExtflagSkipWorktree) != 0,
+			intentToAdd:  (ext_flags & maskExtflagIntentToAdd) != 0,
 		}
 
 		// fmt.Println("file name: ", string(entry.Filepath))
@@ -249,9 +249,9 @@ func decodeTreeCacheExtension(rd io.Reader, idx *Index) error {
 		copy(te.Oid[:], oid)
 
 		// fmt.Println(te)
-		idx.cacheTree.entries = append(idx.cacheTree.entries, te)
+		idx.cacheTree.cacheTreeEntries = append(idx.cacheTree.cacheTreeEntries, te)
 	}
-	idx.cacheTree.buildTrees()
+	idx.cacheTree.buildTreeFs()
 
 	return nil
 }

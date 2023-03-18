@@ -37,7 +37,7 @@ func (r *Repository) InitRepository(w io.Writer, root string) error {
 	return nil
 }
 
-func (r *Repository) Put(h common.Hash, obj *object.GitObject) error {
+func (r *Repository) Put(h common.Hash, obj object.Object) error {
 	oid := h.String()
 	dir := filepath.Join(r.ObjectsPath(), oid[:2])
 	path := filepath.Join(dir, oid[2:])
@@ -60,6 +60,43 @@ func (r *Repository) Put(h common.Hash, obj *object.GitObject) error {
 }
 
 // Get GitObject from Repository, return nil and error if oid is invalide
+// func (r *Repository) Get(oid common.Hash) (object.Object, error) {
+// 	path, err := r.checkObjectExists(oid)
+// 	if err != nil {
+// 		return nil, err
+// 	}
+
+// 	// fmt.Println("object path:", path)
+// 	// TODO: handle reading from git repository (blob, tree, commmit and tag)
+// 	f, err := os.Open(path)
+// 	if err != nil {
+// 		log.Fatal(err)
+// 		return nil, err
+// 	}
+// 	defer f.Close()
+
+// 	g, err := object.Deserialize(oid, f)
+
+// 	switch g.Kind() {
+// 	case object.Kind_Blob:
+// 		return &object.Blob{
+// 			GitObject: *g,
+// 		}, nil
+
+// 	case object.Kind_Tree:
+// 		return &object.Tree{
+// 			GitObject: *g,
+// 		}, nil
+// 	case object.Kind_Commit:
+// 		panic("Not implemented")
+// 	case object.Kind_Tag:
+// 		panic("Not implemented")
+
+// 	}
+// 	return nil, object.ErrInvalidObject
+// }
+
+// Get GitObject from Repository, return nil and error if oid is invalide
 func (r *Repository) Get(oid common.Hash) (*object.GitObject, error) {
 	path, err := r.checkObjectExists(oid)
 	if err != nil {
@@ -75,8 +112,43 @@ func (r *Repository) Get(oid common.Hash) (*object.GitObject, error) {
 	}
 	defer f.Close()
 
-	obj, err := object.DeserializeGitObject(f)
-	return obj, err
+	g := object.EmptyGitObjectWithId(oid)
+	err = g.Deserialize(f)
+	return g, err
+}
+
+// Load multiple Trees leaded leaded with rootId from repository
+func (r *Repository) LoadTrees(rootId common.Hash, rootName string) (*object.Tree, error) {
+	if rootId == common.ZeroHash {
+		return nil, errObjectNotExists
+	}
+
+	root := object.NewTree(rootId, rootName, common.Dir)
+	tq := object.NewQueue()
+	tq.Enqueue(root)
+	for {
+		t := tq.Dequeue()
+		if t == nil {
+			break
+		}
+
+		g, err := r.Get(t.Id())
+		if err != nil {
+			continue
+		}
+
+		t.FromGitObject(g)
+		t.ForEach(func(e object.TreeEntry) error {
+			if e.Kind() == object.Kind_Tree {
+				// fmt.Println("enqueue t: ", e.Id(), e.Name())
+				tq.Enqueue(e.(*object.Tree))
+			}
+
+			return nil
+		})
+	}
+
+	return root, nil
 }
 
 func (r *Repository) Dump(oid common.Hash, w io.Writer) error {

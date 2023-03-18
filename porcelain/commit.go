@@ -3,6 +3,7 @@ package porcelain
 import (
 	"fmt"
 	"io"
+	"path/filepath"
 
 	"github.com/izhujiang/gogit/common"
 	"github.com/izhujiang/gogit/core"
@@ -52,7 +53,10 @@ func Commit(w io.Writer, option *CommitOption) error {
 		lastCommit.FromGitObject(gObj)
 		lastTreeId := lastCommit.Tree()
 
-		changes := compareTrees(lastTreeId, treeId)
+		changes, err := compareTrees(lastTreeId, treeId)
+		if err != nil {
+			return err
+		}
 
 		for _, c := range changes.Create {
 			line := fmt.Sprintf("create mode %s %s\n", c.To.Mode, c.To.Name)
@@ -75,39 +79,30 @@ func Commit(w io.Writer, option *CommitOption) error {
 	return err
 }
 
-func compareTrees(lastTreeId common.Hash, thisTreeId common.Hash) *common.Changes {
+func compareTrees(lastTreeId common.Hash, thisTreeId common.Hash) (*common.Changes, error) {
 	repo := core.GetRepository()
 
-	fillTree := func(t *object.Tree) {
-		gObj, err := repo.Get(t.Id())
-		if err != nil {
-			return
-		} else { // read content for tree identified by id
-			if gObj.Type() != object.ObjectTypeTree {
-				return
-			}
-			t.FromGitObject(gObj)
-		}
+	lastTree, err := repo.LoadTrees(lastTreeId, "")
+	if err != nil {
+		return nil, err
 	}
-
-	lastTree := object.NewTree(lastTreeId, "")
-	lastTrees := object.NewTreeCollection()
-	lastTrees.InitWithRoot(lastTree)
-	lastTrees.Expand(fillTree)
+	lastTrees := object.NewTreeFs(lastTree)
 
 	lastTreeCollector := &filesCollector{}
-	lastTrees.WalkByAlphabeticalOrder(lastTreeCollector.collect)
+	// lastTrees.WalkTreeEntryByAlphabeticalOrder(lastTreeCollector.collect)
+	lastTrees.DFWalk(lastTreeCollector.collect, true)
 
-	thisTree := object.NewTree(thisTreeId, "")
-	thisTrees := object.NewTreeCollection()
-	thisTrees.InitWithRoot(thisTree)
-	thisTrees.Expand(fillTree)
+	thisTree, err := repo.LoadTrees(thisTreeId, "")
+	if err != nil {
+		return nil, err
+	}
+	thisTrees := object.NewTreeFs(thisTree)
 
 	thisTreeCollector := &filesCollector{}
-	thisTrees.WalkByAlphabeticalOrder(thisTreeCollector.collect)
+	thisTrees.DFWalk(thisTreeCollector.collect, true)
 
 	changes := common.CompareOrderedNameHashPairs(lastTreeCollector.pairs, thisTreeCollector.pairs)
-	return changes
+	return changes, nil
 
 }
 
@@ -115,14 +110,20 @@ type filesCollector struct {
 	pairs common.NameHashPairs
 }
 
-func (fc *filesCollector) collect(path string, e object.TreeEntry) {
-	if e.Type() == object.ObjectTypeBlob {
-		p := &common.NameHashPair{
-			Name: path,
-			Oid:  e.Id(),
-			Mode: e.Mode(),
+func (fc *filesCollector) collect(path string, t *object.Tree) error {
+	t.ForEach(func(e object.TreeEntry) error {
+		if e.Kind() == object.Kind_Blob {
+			fp := filepath.Join(path, e.Name())
+			p := &common.NameHashPair{
+				Name: fp,
+				Oid:  e.Id(),
+				Mode: e.Type(),
+			}
+			fc.pairs = append(fc.pairs, p)
 		}
-		fc.pairs = append(fc.pairs, p)
-	}
 
+		return nil
+	})
+
+	return nil
 }

@@ -8,36 +8,36 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"strconv"
 	"strings"
 
 	"github.com/izhujiang/gogit/common"
 )
 
-type ObjectType byte
+type ObjectKind byte
 
 const (
-	ObjectTypeBlob ObjectType = iota
-	ObjectTypeTree
-	ObjectTypeCommit
-	ObjectTypeTag
-	ObjectTypeUnknow
+	Kind_Blob ObjectKind = iota
+	Kind_Tree
+	Kind_Commit
+	Kind_Tag
+	Kind_Unknow
 )
 
 var (
-	errInvalidObject = errors.New("Invalidate Object.")
+	ErrGitObjectDataCorruptted = errors.New("Git object data corruptted.")
+	ErrInvalidObject           = errors.New("Invalidate Object.")
 )
 
-func (t ObjectType) String() string {
+func (t ObjectKind) String() string {
 	switch t {
-	case ObjectTypeBlob:
+	case Kind_Blob:
 		return "blob"
-	case ObjectTypeTree:
+	case Kind_Tree:
 		return "tree"
-	case ObjectTypeCommit:
+	case Kind_Commit:
 		return "commit"
-	case ObjectTypeTag:
+	case Kind_Tag:
 		return "tag"
 	default:
 		// TODO: Others object type should be implemented.
@@ -46,45 +46,78 @@ func (t ObjectType) String() string {
 }
 
 var (
-	objectTypeDict = map[string]ObjectType{"blob": ObjectTypeBlob,
-		"tree":   ObjectTypeTree,
-		"commit": ObjectTypeCommit,
-		"tag":    ObjectTypeTag,
+	kindDict = map[string]ObjectKind{
+		"blob":   Kind_Blob,
+		"tree":   Kind_Tree,
+		"commit": Kind_Commit,
+		"tag":    Kind_Tag,
 	}
 )
 
-func ParseObjectType(objType string) ObjectType {
-	if ot, ok := objectTypeDict[strings.ToLower(objType)]; ok {
+func ParseObjectType(objType string) ObjectKind {
+	if ot, ok := kindDict[strings.ToLower(objType)]; ok {
 		return ot
 	} else {
-		return ObjectTypeUnknow
+		return Kind_Unknow
+	}
+}
+func FileModeToObjectKind(fm common.FileMode) ObjectKind {
+	if common.IsFile(fm) {
+		return Kind_Blob
+	} else if common.IsDir(fm) {
+		return Kind_Tree
+	} else {
+		return Kind_Unknow
 	}
 }
 
-type GitObject struct {
-	// header
-	objectType ObjectType
-	size       int64
+type Object interface {
+	Id() common.Hash
+	Kind() ObjectKind
 
-	content []byte // unzip content which
+	Size() int64
+	Content() string
+
+	Deserialize(r io.Reader) error
+	Serialize(w io.Writer) error
 }
 
-func NewGitObject(t ObjectType, content []byte) *GitObject {
+// GitObject, unmodifiable object
+type GitObject struct {
+	oid common.Hash
+	// header
+	objectKind ObjectKind
+
+	content []byte // unzipped content
+}
+
+func EmptyGitObject() *GitObject {
+	return &GitObject{}
+}
+
+// Remember to deserialize from stream
+func EmptyGitObjectWithId(id common.Hash) *GitObject {
+	return &GitObject{
+		oid: id,
+	}
+}
+
+func NewGitObject(t ObjectKind, content []byte) *GitObject {
 	s := len(content)
 	c := make([]byte, s)
 	copy(c, content)
 
 	g := &GitObject{
-		objectType: t,
-		size:       int64(s),
+		objectKind: t,
 		content:    c,
 	}
+	g.oid = g.Hash()
 
 	return g
 }
 
 // Load GitObject from stream (git repository)
-func DeserializeGitObject(r io.Reader) (*GitObject, error) {
+func (g *GitObject) Deserialize(r io.Reader) error {
 	zr, _ := zlib.NewReader(r)
 	defer zr.Close()
 
@@ -93,27 +126,34 @@ func DeserializeGitObject(r io.Reader) (*GitObject, error) {
 	// read header
 	fmt.Fscanf(zr, "%s %d\x00", &objtype, &size)
 
-	g := &GitObject{
-		objectType: ParseObjectType(objtype),
-		size:       size,
-	}
+	// g := &GitObject{
+	// 	oid:        oid,
+	// 	objectKind: ParseObjectType(objtype),
+	// }
+	// g.size = size
+	g.objectKind = ParseObjectType(objtype)
 
 	g.content = make([]byte, size)
-	zr.Read(g.content)
+	n, _ := zr.Read(g.content)
 
-	if g.size != int64(len(g.content)) {
-		log.Fatal("data corruptted.")
+	if n != len(g.content) {
+		return ErrGitObjectDataCorruptted
 	}
 
-	return g, nil
+	if g.oid != g.Hash() {
+		return ErrGitObjectDataCorruptted
+	}
+
+	return nil
 }
 
 func (g *GitObject) Serialize(w io.Writer) error {
 	wt := zlib.NewWriter(w)
 	defer wt.Close()
 
-	// write header
-	header := fmt.Sprintf("%s %d\x00", strings.ToLower(g.objectType.String()), g.size)
+	// write header and content
+	size := int64(len(g.content))
+	header := fmt.Sprintf("%s %d\x00", strings.ToLower(g.objectKind.String()), size)
 	_, err := wt.Write([]byte(header))
 	_, err = wt.Write(g.content)
 
@@ -122,56 +162,35 @@ func (g *GitObject) Serialize(w io.Writer) error {
 	return err
 }
 
-//	func (g *GitObject) Id() common.Hash {
-//		return g.oid
-//	}
-func (g *GitObject) Type() ObjectType {
-	return g.objectType
+func (g *GitObject) Id() common.Hash {
+	return g.oid
+}
+
+func (g *GitObject) Kind() ObjectKind {
+	return g.objectKind
 }
 
 func (g *GitObject) Size() int64 {
-	return g.size
+	return int64(len(g.content))
 }
 
-func (g *GitObject) Content() []byte {
-	return g.content
+func (g *GitObject) Content() string {
+	return string(g.content)
 }
 
 func (g *GitObject) Hash() common.Hash {
 	b := &bytes.Buffer{}
-	b.WriteString(g.objectType.String())
-	b.WriteString(" ")
+	b.WriteString(g.objectKind.String())
+	b.WriteByte(common.SPACE)
 	b.WriteString(strconv.Itoa(len(g.content)))
-	b.WriteByte(0x00)
+	b.WriteByte(common.NUL)
 	b.Write(g.content)
 	// fmt.Fprintf(b, "%s %d\u0000%s", t, len(content), content)
 
-	h := common.Hash(sha1.Sum(b.Bytes()))
-	return h
+	g.oid = common.Hash(sha1.Sum(b.Bytes()))
+
+	return g.oid
 }
-
-// HashObject read data from a reader and create a GitObject classified by the ObjectType argument.
-// func HashObject(content []byte, t ObjectType) (*GitObject, error) {
-// 	var err error
-
-// 	b := &bytes.Buffer{}
-// 	b.WriteString(t.String())
-// 	b.WriteString(" ")
-// 	b.WriteString(strconv.Itoa(len(content)))
-// 	b.WriteByte(0x00)
-// 	b.Write(content)
-// 	// fmt.Fprintf(b, "%s %d\u0000%s", t, len(content), content)
-
-// 	g := &GitObject{}
-// 	h1 := sha1.Sum(b.Bytes())
-// 	copy(g.oid[:], h1[:])
-// 	g.objectType = t
-// 	g.size = int64(len(content))
-// 	g.content = make([]byte, len(content))
-// 	copy(g.content, content)
-
-// 	return g, err
-// }
 
 // Dump object in .git repository
 func DumpGitObject(r io.Reader, w io.Writer) {
@@ -202,12 +221,4 @@ func DumpGitObject(r io.Reader, w io.Writer) {
 		fmt.Fprintf(w, "%08x  % x  % x  %s\n", addr, b[:8], b[8:], bb)
 		addr += 16
 	}
-}
-
-type GitEntity interface {
-	/* TODO: add methods */
-	Id() common.Hash
-	FromGitObject(g *GitObject)
-	ToGitObject() *GitObject
-	Content() string
 }

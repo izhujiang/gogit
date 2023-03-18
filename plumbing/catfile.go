@@ -19,7 +19,7 @@ type CatFileOption struct {
 func CatFile(w io.Writer, oid common.Hash, option *CatFileOption) error {
 	repo := core.GetRepository()
 
-	gObj, err := repo.Get(oid)
+	g, err := repo.Get(oid)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -29,24 +29,22 @@ func CatFile(w io.Writer, oid common.Hash, option *CatFileOption) error {
 	}
 
 	if option.PrintType {
-		fmt.Fprintf(w, "%s\n", gObj.Type())
+		fmt.Fprintf(w, "%s\n", g.Kind())
 	}
 	if option.PrintSize {
-		fmt.Fprintf(w, "%d\n", gObj.Size())
+		fmt.Fprintf(w, "%d\n", g.Size())
 	}
 	if option.PrintContent {
-		switch gObj.Type() {
-		case object.ObjectTypeBlob:
-			blob := object.EmptyBlob()
-			blob.FromGitObject(gObj)
+		switch g.Kind() {
+		case object.Kind_Blob:
+			blob := object.GitObjectToBlob(g)
 			fmt.Fprintf(w, "%s", blob.Content())
-		case object.ObjectTypeTree:
-			tree := object.EmptyTree()
-			tree.FromGitObject(gObj)
+		case object.Kind_Tree:
+			tree := object.GitObjectToTree(g)
 			fmt.Fprintf(w, "%s", tree.Content())
-		case object.ObjectTypeCommit:
+		case object.Kind_Commit:
 			commit := object.EmptyCommit()
-			commit.FromGitObject(gObj)
+			commit.FromGitObject(g)
 			fmt.Fprintf(w, "%s", commit.Content())
 		default:
 			panic("Not implemented")

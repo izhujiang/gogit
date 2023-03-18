@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"syscall"
@@ -13,69 +14,76 @@ import (
 )
 
 type IndexEntry struct {
-	Oid      common.Hash
-	Filepath string
+	oid      common.Hash
+	filepath string
 
-	CTime time.Time
-	MTime time.Time
+	fileinfo
 
-	// 32-bit dev (divice)
-	Dev uint32
-	// 32-bit ino (inode)
-	Ino   uint32
-	Mode  common.FileMode
-	Stage Stage
-	Uid   uint32
-	Gid   uint32
-
-	// File size on-disk size from stat(2), truncated to 32-bit.
-	Size uint32
-
-	Skipworktree bool
-	IntentToAdd  bool
+	stage        Stage
+	skipworktree bool
+	intentToAdd  bool
 }
 
-func NewIndexEntry(oid common.Hash, mode common.FileMode, filepath string) *IndexEntry {
-	ie := &IndexEntry{
-		Oid:      oid,
-		Mode:     mode,
-		Filepath: filepath,
-	}
-	return ie
-}
-
-func NewIndexEntryWithFileInfo(oid common.Hash, mode common.FileMode, filepath string, fi os.FileInfo) *IndexEntry {
+func NewIndexEntry(oid common.Hash, mode common.FileMode, fpath string) *IndexEntry {
 	e := &IndexEntry{
-		Oid:      oid,
-		Mode:     mode,
-		Filepath: filepath,
+		oid: oid,
+		fileinfo: fileinfo{
+			name: filepath.Base(fpath),
+			mode: mode,
+		},
+		filepath: fpath,
+	}
+	return e
+}
+
+func NewIndexEntryWithFileInfo(oid common.Hash, mode common.FileMode, fpath string, fi os.FileInfo) *IndexEntry {
+	e := &IndexEntry{
+		oid: oid,
+		fileinfo: fileinfo{
+			name: filepath.Base(fpath),
+			mode: mode,
+		},
+		filepath: fpath,
 	}
 
 	stat := fi.Sys().(*syscall.Stat_t)
-	e.Mode = common.FileMode(stat.Mode)
-	e.CTime = time.Unix(int64(stat.Ctimespec.Sec), int64(stat.Ctimespec.Nsec))
-	e.MTime = fi.ModTime()
-	e.Dev = uint32(stat.Dev)
-	e.Ino = uint32(stat.Ino)
-	e.Uid = stat.Gid
-	e.Gid = stat.Gid
-	e.Size = uint32(stat.Size)
+	e.mode = common.FileMode(stat.Mode)
+	e.cTime = time.Unix(int64(stat.Ctimespec.Sec), int64(stat.Ctimespec.Nsec))
+	e.mTime = fi.ModTime()
+	e.dev = uint32(stat.Dev)
+	e.ino = uint32(stat.Ino)
+	e.uid = stat.Gid
+	e.gid = stat.Gid
+	e.size = uint32(stat.Size)
 	return e
 }
 func (e *IndexEntry) UpdateWithFileInfo(fi os.FileInfo) {
 	stat := fi.Sys().(*syscall.Stat_t)
-	e.Mode = common.FileMode(stat.Mode)
-	e.CTime = time.Unix(int64(stat.Ctimespec.Sec), int64(stat.Ctimespec.Nsec))
-	e.MTime = fi.ModTime()
-	e.Dev = uint32(stat.Dev)
-	e.Ino = uint32(stat.Ino)
-	e.Uid = stat.Gid
-	e.Gid = stat.Gid
-	e.Size = uint32(stat.Size)
+	e.mode = common.FileMode(stat.Mode)
+	e.cTime = time.Unix(int64(stat.Ctimespec.Sec), int64(stat.Ctimespec.Nsec))
+	e.mTime = fi.ModTime()
+	e.dev = uint32(stat.Dev)
+	e.ino = uint32(stat.Ino)
+	e.uid = stat.Gid
+	e.gid = stat.Gid
+	e.size = uint32(stat.Size)
 }
 
 type IndexEntries struct {
 	entries []*IndexEntry
+}
+
+func (ide *IndexEntries) LsIndexEntries(w io.Writer, withDetail bool) {
+	if withDetail {
+		for _, e := range ide.entries {
+			fmt.Fprintf(w, "%o %s %d \t%s\n", e.mode, e.oid, e.stage, e.filepath)
+		}
+	} else {
+		for _, e := range ide.entries {
+			fmt.Fprintln(w, e.filepath)
+		}
+
+	}
 }
 
 func (ide *IndexEntries) size() int {
@@ -87,21 +95,22 @@ func (ide *IndexEntries) reset() {
 
 func (ide *IndexEntries) find(path string) *IndexEntry {
 	for _, entry := range ide.entries {
-		if entry.Filepath == path {
+		if entry.filepath == path {
 			return entry
 		}
 	}
 	return nil
 }
 
-func (ide *IndexEntries) append(entry *IndexEntry) {
-	ide.entries = append(ide.entries, entry)
-}
+// func (ide *IndexEntries) append(entry *IndexEntry) {
+// 	ide.entries = append(ide.entries, entry)
+// }
 
-func (ide *IndexEntries) updateOrInsert(entry *IndexEntry) {
+func (ide *IndexEntries) updateOrAppend(entry *IndexEntry) {
 	for i, e := range ide.entries {
-		if e.Filepath == entry.Filepath {
+		if e.filepath == entry.filepath {
 			ide.entries[i] = entry
+			return
 		}
 	}
 	ide.entries = append(ide.entries, entry)
@@ -109,24 +118,21 @@ func (ide *IndexEntries) updateOrInsert(entry *IndexEntry) {
 	// 	return strings.Compare(ide.entries[i].Filepath, ide.entries[j].Filepath) < 0
 	// })
 }
-func (ide *IndexEntries) Sort() {
-	sort.SliceStable(ide.entries, func(i, j int) bool {
-		return strings.Compare(ide.entries[i].Filepath, ide.entries[j].Filepath) < 0
-	})
+
+func (ide *IndexEntries) append(entry *IndexEntry) {
+	ide.entries = append(ide.entries, entry)
 }
 
-// func (ide *IndexEntries) insertEntries(entries []*IndexEntry) {
-// 	// add, sort and update header
-// 	ide.entries = append(ide.entries, entries...)
-// 	// sort.SliceStable(ide.entries, func(i, j int) bool {
-// 	// 	return strings.Compare(ide.entries[i].Filepath, ide.entries[j].Filepath) < 0
-// 	// })
-// }
+func (ide *IndexEntries) Sort() {
+	sort.SliceStable(ide.entries, func(i, j int) bool {
+		return strings.Compare(ide.entries[i].filepath, ide.entries[j].filepath) < 0
+	})
+}
 
 func (ide *IndexEntries) remove(path string) bool {
 	numOfEntries := len(ide.entries)
 	for i, entry := range ide.entries {
-		if entry.Filepath == path {
+		if entry.filepath == path {
 			if i < int(numOfEntries-1) {
 				copy(ide.entries[i:], ide.entries[i+1:])
 			}
@@ -167,16 +173,16 @@ func (ide *IndexEntries) dumpIndexEntries(w io.Writer) {
 	ide.foreach(func(entry *IndexEntry) {
 		fmt.Fprintf(w,
 			lineFormat,
-			entry.Oid,
-			entry.Mode,
-			entry.Size,
-			entry.Uid,
-			entry.Gid,
-			entry.Dev,
-			entry.Ino,
-			entry.MTime.Format("2006-01-02T15:04:05"),
-			entry.CTime.Format("2006-01-02T15:04:05"),
-			entry.Filepath,
+			entry.oid,
+			entry.mode,
+			entry.size,
+			entry.uid,
+			entry.gid,
+			entry.dev,
+			entry.ino,
+			entry.mTime.Format("2006-01-02T15:04:05"),
+			entry.cTime.Format("2006-01-02T15:04:05"),
+			entry.filepath,
 		)
 	})
 }

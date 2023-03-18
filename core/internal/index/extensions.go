@@ -29,49 +29,45 @@ const (
 
 type CacheTree struct {
 	// built-in trees
-	object.TreeCollection
+	object.TreeFs
 	// for encode and decode
-	entries []*CacheTreeEntry
-	// registers map[string]*CacheTreeEntry
+	cacheTreeEntries []*CacheTreeEntry
 }
 
 func newCacheTree() *CacheTree {
 	c := &CacheTree{
-		entries: make([]*CacheTreeEntry, 0, cachetree_cap),
-		// TODO: change hashtable into more meaningful name, mapping from fullpath to *CacheTreeEntry
-		// registers: make(map[string]*CacheTreeEntry),
+		cacheTreeEntries: make([]*CacheTreeEntry, 0, cachetree_cap),
 	}
 
 	return c
 }
 
 func (c *CacheTree) reset() {
-	c.entries = make([]*CacheTreeEntry, 0, cachetree_cap)
-	c.buildTrees()
+	c.cacheTreeEntries = make([]*CacheTreeEntry, 0, cachetree_cap)
+	c.buildTreeFs()
 
 	// c.registers = make(map[string]*CacheTreeEntry)
 }
 
-func (c *CacheTree) buildTrees() {
+func (c *CacheTree) buildTreeFs() {
 	var newTreeFromCacheTreeEntry func(int, string) *object.Tree
 	loopIndex := 0
 
 	newTreeFromCacheTreeEntry = func(cur int, path string) *object.Tree {
-		curItem := c.entries[cur]
-		t := object.NewTree(curItem.Oid, path)
-		// c.registers[path] = curItem
+		curItem := c.cacheTreeEntries[cur]
+		t := object.NewTree(curItem.Oid, path, common.Dir)
 
 		for i := 0; i < curItem.SubtreeCount; i++ {
 			loopIndex++
-			sub_t := newTreeFromCacheTreeEntry(loopIndex, c.entries[loopIndex].Name)
+			sub_t := newTreeFromCacheTreeEntry(loopIndex, c.cacheTreeEntries[loopIndex].Name)
 			t.UpdateOrAddEntry(sub_t)
 		}
 
 		return t
 	}
 
-	if len(c.entries) > 0 {
-		t := newTreeFromCacheTreeEntry(0, c.entries[0].Name)
+	if len(c.cacheTreeEntries) > 0 {
+		t := newTreeFromCacheTreeEntry(0, c.cacheTreeEntries[0].Name)
 		c.InitWithRoot(t)
 	} else {
 		c.InitWithRoot(nil)
@@ -79,17 +75,18 @@ func (c *CacheTree) buildTrees() {
 }
 
 func (c *CacheTree) refreshCacheTreeEntries() {
-	c.entries = make([]*CacheTreeEntry, 0, cachetree_cap)
-	c.DFWalk(func(path string, t *object.Tree) {
+	c.cacheTreeEntries = make([]*CacheTreeEntry, 0, cachetree_cap)
+	c.DFWalk(func(path string, t *object.Tree) error {
 		entryCount := 0
 		subtreeCount := 0
-		t.ForEach(func(e object.TreeEntry) {
-			switch e.Mode() {
+		t.ForEach(func(e object.TreeEntry) error {
+			switch e.Type() {
 			case common.Dir:
 				subtreeCount++
 			case common.Regular:
 				entryCount++
 			}
+			return nil
 		})
 
 		if t.Id() == common.ZeroHash {
@@ -103,7 +100,9 @@ func (c *CacheTree) refreshCacheTreeEntries() {
 			SubtreeCount: subtreeCount,
 		}
 		// fmt.Println("new cache tree entry: ", cachetreeEntry)
-		c.entries = append(c.entries, cachetreeEntry)
+		c.cacheTreeEntries = append(c.cacheTreeEntries, cachetreeEntry)
+
+		return nil
 	}, true)
 
 	// sum up cache tree entry count bottom-up
@@ -111,7 +110,7 @@ func (c *CacheTree) refreshCacheTreeEntries() {
 	loopIndex := 0
 
 	updateCacheTreeEntryCount = func(cur int) *CacheTreeEntry {
-		curItem := c.entries[cur]
+		curItem := c.cacheTreeEntries[cur]
 		totalEntryCount := 0
 
 		for i := 0; i < curItem.SubtreeCount; i++ {
@@ -133,22 +132,23 @@ func (c *CacheTree) refreshCacheTreeEntries() {
 		return curItem
 	}
 
-	if len(c.entries) > 0 {
+	if len(c.cacheTreeEntries) > 0 {
 		updateCacheTreeEntryCount(0)
 	}
 
 }
 
 func (c *CacheTree) foreach(fn CacheTreeEntryVisitFunc) {
-	for _, e := range c.entries {
+	for _, e := range c.cacheTreeEntries {
 		fn(e)
 	}
 }
 
 // Invalidate all TreeEntry in the path, for instance, InvalidatePath("aaa/bbb/ccc.txt") invalidate "", "aaa", "bbb"
 func (c *CacheTree) invalidatePath(path string) {
-	invalidateTreeEntryHanlder := func(t *object.Tree) {
-		t.SetId(common.ZeroHash)
+	invalidateTreeEntryHanlder := func(t *object.Tree) error {
+		t.ZeroId()
+		return nil
 	}
 
 	c.WalkByPath(path, invalidateTreeEntryHanlder, false)

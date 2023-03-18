@@ -23,6 +23,7 @@ func Init(w io.Writer, root string) error {
 // The "index" holds a snapshot of the content of the working tree, and it is this snapshot that is taken as the contents of the next commit.
 // Thus after making any changes to the working tree, and before running the commit command, you must use the add command to add any new or
 // modified files to the index.
+
 func Add(paths []string, option *AddOption) error {
 	return porcelain.Add(paths)
 }
