@@ -31,9 +31,6 @@ type LsTreeOption = plumbing.LsTreeOption
 type AddOption struct {
 }
 
-type RemoveOption struct {
-}
-
 type LsFilesOption = plumbing.LsFilesOption
 type WriteTreeOption = plumbing.WriteTreeOption
 type ReadTreeOption = plumbing.ReadTreeOption
@@ -46,5 +43,6 @@ type CommitTreeOption struct {
 	Message string
 }
 
+type RemoveOption = porcelain.RemoveOption
 type LogOption = porcelain.LogOption
 type CommitOption = porcelain.CommitOption

@@ -38,11 +38,10 @@ func CommitTree(tree common.Hash, option *CommitTreeOption) (common.Hash, error)
 		author,
 		committer,
 		option.Message)
-	oid := c.Hash()
 
 	repo := core.GetRepository()
+	g := c.ToGitObject()
+	repo.Put(g)
 
-	repo.Put(oid, &c.GitObject)
-
-	return c.Id(), nil
+	return g.Id(), nil
 }

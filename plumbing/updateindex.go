@@ -1,12 +1,10 @@
 package plumbing
 
 import (
-	"log"
 	"os"
 
 	"github.com/izhujiang/gogit/common"
 	"github.com/izhujiang/gogit/core"
-	"github.com/izhujiang/gogit/core/object"
 )
 
 type UpdateIndexOption struct {
@@ -22,19 +20,7 @@ func UpdateIndex(option *UpdateIndexOption) error {
 	case "replace", "add":
 		if option.Path != "" {
 			path := option.Path
-			f, err := os.Open(path)
-			if err != nil {
-				log.Fatal(err)
-			}
-			defer f.Close()
-
-			hoOption := &HashObjectOption{
-				ObjectType: object.Kind_Blob,
-				Write:      true,
-			}
-			oid, err := HashObject(f, hoOption)
-
-			sa.UpdateIndex(oid, path)
+			sa.UpdateIndex(path)
 		} else {
 			oid, err := common.NewHash(option.Args["oid"])
 			if err != nil {

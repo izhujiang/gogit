@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"io/fs"
+	"log"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -12,52 +12,40 @@ import (
 	"github.com/izhujiang/gogit/common"
 )
 
-type entryOrder uint8
-
 const (
-	order_Ascending entryOrder = iota
-	order_descending
+	default_tree_entry_capacity = 64
 )
 
 // 100644 blob ec1871edcbfdc0d17ef498030e7ca676f291393d	LICENSE
 // // Blob and Tree Object both implemente TreeEntry interface
-type TreeEntry interface {
-	Object
-	fs.DirEntry
+type TreeEntry struct {
+	Oid      common.Hash
+	Kind     ObjectKind
+	Name     string
+	Filemode common.FileMode
+
+	// Pointer to Subtree(*Tree) or Blob(*Blob) identified by oid and implement common Object interface
+	Pointer Object
 }
 
-// type DirEntry interface {
-// 	Name() string
-// 	IsDir() bool
+func NewTreeEntry(id common.Hash, name string, filemode common.FileMode) *TreeEntry {
+	kind := ObjectKindFromFilemode(filemode)
 
-// 	Type() FileMode
-// 	Info() (FileInfo, error)
-// }
-
-type TreeEntryCollection []TreeEntry
-
-func newTreeEntryCollecion() TreeEntryCollection {
-	tc := make([]TreeEntry, 0)
-	return tc
-}
-
-func NewTreeEntry(id common.Hash, name string, filemode common.FileMode) TreeEntry {
-	// var oid common.Hash
-	// copy(oid[:], refId[:])
-	var te TreeEntry
-
-	kind := FileModeToObjectKind(filemode)
-	switch kind {
-	case Kind_Blob:
-		te = NewBlob(id, name, filemode, nil)
-	case Kind_Tree:
-		te = NewTree(id, name, filemode)
-	default:
-		fmt.Println("id: ", id, " name: ", name)
-		panic("Not implemented.")
+	e := &TreeEntry{
+		Oid:      id,
+		Kind:     kind,
+		Name:     name,
+		Filemode: filemode,
 	}
 
-	return te
+	return e
+}
+
+type TreeEntryCollection []*TreeEntry
+
+func newTreeEntryCollecion() TreeEntryCollection {
+	tc := make([]*TreeEntry, 0, default_tree_entry_capacity)
+	return tc
 }
 
 // order by name of entry's name field
@@ -73,71 +61,45 @@ func NewTreeEntry(id common.Hash, name string, filemode common.FileMode) TreeEnt
 // 040000 tree c227a45a113be8f4482478d1f50a5eacde773371	plumbing
 // 040000 tree 249696c6cb1ef790ccd683a6bcc704cdc5b97db5	porcelain
 
-// Tree Object, implements Interface TreeEntry{ Object, fs.DirEntry}
+// Tree implements Object interface
 type Tree struct {
 	// Hash ID
-	GitObject
-	// fullpath string
-	name string
-
-	filemode common.FileMode
+	oid common.Hash
 
 	// TODO: make sure entries ordered by name
 	entries TreeEntryCollection
 }
 
-func (t *Tree) Name() string {
-	return t.name
-}
-
-func (t *Tree) IsDir() bool {
-	return true
-}
-
-func (t *Tree) Type() common.FileMode {
-	return t.filemode
-}
-
-func (t *Tree) EntryCount() int {
-	return len(t.entries)
-}
-
-// Info returns the FileInfo for the file or subdirectory described by the entry.
-// The returned FileInfo may be from the time of the original directory read
-// or from the time of the call to Info. If the file has been removed or renamed
-// since the directory read, Info may return an error satisfying errors.Is(err, ErrNotExist).
-// If the entry denotes a symbolic link, Info reports the information about the link itself,
-// not the link's target.
-func (t *Tree) Info() (fs.FileInfo, error) {
-	info := &GitObjectInfo{}
-	return info, nil
-}
-
-func (t *Tree) ZeroId() {
-	t.oid = common.ZeroHash
-}
-func (t *Tree) SetName(name string) {
-	t.name = name
-}
-
-func NewTree(oid common.Hash, name string, filemode common.FileMode) *Tree {
+func NewTree(oid common.Hash) *Tree {
 	return &Tree{
-		GitObject: GitObject{
-			oid:        oid,
-			objectKind: Kind_Tree,
-		},
-		name:     name,
-		filemode: filemode,
-		entries:  newTreeEntryCollecion(),
+		oid:     oid,
+		entries: newTreeEntryCollecion(),
 	}
 }
+
 func EmptyTree() *Tree {
 	return &Tree{
 		entries: newTreeEntryCollecion(),
 	}
 }
 
-type WalkTreeEntryFunc func(TreeEntry) error
+func (t *Tree) Id() common.Hash {
+	return t.oid
+}
+
+func (t *Tree) Kind() ObjectKind {
+	return Kind_Tree
+}
+
+func (t *Tree) EntryCount() int {
+	return len(t.entries)
+}
+
+func (t *Tree) ZeroId() {
+	t.oid = common.ZeroHash
+}
+
+type WalkTreeEntryFunc func(*TreeEntry) error
 
 func (t *Tree) ForEach(fn WalkTreeEntryFunc) {
 	for _, e := range t.entries {
@@ -149,59 +111,82 @@ func (t *Tree) ForEach(fn WalkTreeEntryFunc) {
 	}
 }
 
-func (t *Tree) Subtree(subtreeName string) *Tree {
+func (t *Tree) Find(name string) *TreeEntry {
 	for _, e := range t.entries {
-		if e.Type() == common.Dir && e.Name() == subtreeName {
-			return e.(*Tree)
+		if e.Name == name {
+			return e
+		}
+	}
+	return nil
+}
+
+func (t *Tree) Subtree(name string) *TreeEntry {
+	for _, e := range t.entries {
+		if e.Kind == Kind_Tree && e.Name == name {
+			return e
 		}
 	}
 
 	return nil
 }
 
-func (t *Tree) UpdateOrAddEntry(entry TreeEntry) {
-	for i, e := range t.entries {
-		if e.Name() == entry.Name() {
-			t.entries[i] = entry
-			return
-		}
-	}
+func (t *Tree) Append(entry *TreeEntry) {
 	t.entries = append(t.entries, entry)
 
-	// Invalidate oid when the entries are changed
-	t.oid = common.ZeroHash
-}
-
-func (t *Tree) RemoveEmptyEntries() {
-	es := make([]TreeEntry, 0, t.EntryCount())
-	for _, e := range t.entries {
-		switch e.Kind() {
-		case Kind_Blob:
-			es = append(es, e)
-		case Kind_Tree:
-			subT := e.(*Tree)
-			if subT.EntryCount() != 0 {
-				es = append(es, e)
-			}
-		}
-	}
-	t.entries = es
-
-	// Invalidate oid when the entries are changed
-	t.oid = common.ZeroHash
+	// do invalidate oid manually
+	// t.oid = common.ZeroHash
 }
 
 func (t *Tree) Sort() {
-	// sort entries
 	entries := t.entries
-	// if order == order_Ascending {
 	sort.SliceStable(entries, func(i, j int) bool {
-		return strings.Compare(entries[i].Name(), entries[j].Name()) < 0
+		return strings.Compare(entries[i].Name, entries[j].Name) < 0
 	})
+
+	// do invalidate oid manually
+	// t.oid = common.ZeroHash
 }
+
+// Update, remove extra empty subtrees and update tree entries which are async with subtree
+// Caution: empty tree entries will be remove and
+func (t *Tree) UpdateEntryState() {
+	entrychanged := false
+
+	es := make([]*TreeEntry, 0, t.EntryCount())
+	for _, e := range t.entries {
+		switch e.Kind {
+		case Kind_Blob:
+			es = append(es, e)
+
+		case Kind_Tree:
+			if e.Pointer == nil { // do nothing, leave it alone
+				es = append(es, e)
+			} else {
+				subT := e.Pointer.(*Tree)
+				if subT.EntryCount() != 0 {
+					if e.Oid != subT.Id() {
+						e.Oid = subT.Id()
+						entrychanged = true
+					}
+					es = append(es, e)
+				} else { // filter out the empty entry
+					entrychanged = true
+				}
+			}
+
+		} // endof switch
+	}
+	t.entries = es
+
+	if entrychanged {
+		t.oid = common.ZeroHash
+	}
+}
+
 func (t *Tree) Hash() common.Hash {
-	t.composeContent()
-	return t.GitObject.Hash()
+	c := t.contentToBytes()
+	t.oid = common.HashObject(t.Kind().String(), c)
+	return t.oid
 }
 
 func (t *Tree) Content() string {
@@ -209,46 +194,15 @@ func (t *Tree) Content() string {
 	for _, e := range t.entries {
 		// TODO: align the output
 		// o := e.(Object)
-		fmt.Fprintf(buf, "%s %s %s\t%s\n", common.FileModeToString(e.Type()), e.Kind(), e.Id(), e.Name())
+		fmt.Fprintf(buf, "%s %s %s\t%s\n", common.FileModeToString(e.Filemode), e.Kind, e.Oid, e.Name)
 	}
 
 	return string(buf.Bytes())
 }
 
 // GitObject ==> Tree,fitll Tree using GotObject from repository
-func (t *Tree) FromGitObject(g *GitObject) {
-	t.GitObject = *g
-	t.parseContent()
-}
-
 func GitObjectToTree(g *GitObject) *Tree {
-	t := &Tree{
-		GitObject: *g,
-	}
-	t.parseContent()
-
-	return t
-}
-
-func (t *Tree) Serialize(w io.Writer) error {
-	t.composeContent()
-
-	return t.GitObject.Serialize(w)
-}
-
-func (t *Tree) Deserialize(r io.Reader) error {
-	err := t.GitObject.Deserialize(r)
-
-	if err != nil {
-		return err
-	}
-
-	t.parseContent()
-	return nil
-}
-
-func (t *Tree) parseContent() {
-	buf := bytes.NewBuffer(t.content)
+	buf := bytes.NewBuffer(g.content)
 	entries := newTreeEntryCollecion()
 
 	for {
@@ -269,21 +223,36 @@ func (t *Tree) parseContent() {
 		entries = append(entries, entry)
 	}
 
-	t.entries = entries
+	t := &Tree{
+		oid:     g.oid,
+		entries: entries,
+	}
+
+	return t
 }
 
-func (t *Tree) composeContent() {
+func (t *Tree) ToGitObject() *GitObject {
+	g := NewGitObject(Kind_Tree, t.contentToBytes())
+
+	// TODO: what to do if t.oid !!= g.oid, in case t.oid == ZeroHash
+	if t.oid != g.oid {
+		log.Fatal(ErrInvalidObject, t.oid, g.oid)
+	}
+
+	return g
+}
+
+func (t *Tree) contentToBytes() []byte {
 	buf := &bytes.Buffer{}
 
-	entries := t.entries
-	for _, e := range entries {
-		mode := strings.TrimLeft(common.FileModeToString(e.Type()), "0 ")
+	for _, e := range t.entries {
+		mode := strings.TrimLeft(common.FileModeToString(e.Filemode), "0 ")
 		buf.WriteString(mode)
 		buf.WriteByte(common.SPACE)
-		buf.WriteString(e.Name())
+		buf.WriteString(e.Name)
 		buf.WriteByte(common.NUL)
-		id := e.Id()
-		buf.Write(id[:])
+		buf.Write(e.Oid[:])
 	}
-	t.content = buf.Bytes()
+
+	return buf.Bytes()
 }

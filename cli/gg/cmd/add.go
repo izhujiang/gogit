@@ -43,6 +43,7 @@ The git add command will not add ignored files by default. If any ignored files 
 Please see git-commit(1) for alternative ways to add content to a commit.
 `,
 	Run: func(cmd *cobra.Command, args []string) {
+		// args have support glob, which means a* -> args [a1, g2, ...], a*/** -> args [a1/ba1, a2/b2, ...]
 		if len(args) > 0 {
 			paths := args
 			option := git.AddOption{}

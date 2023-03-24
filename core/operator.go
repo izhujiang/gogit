@@ -21,25 +21,21 @@ func HashObjectFromPath(path string, oType object.ObjectKind, save bool) (common
 }
 
 func HashObjectFromReader(r io.Reader, oType object.ObjectKind, save bool) (common.Hash, error) {
-	h, gObj, err := hashObject(r, oType)
-
-	if save {
-		repo := GetRepository()
-		// fmt.Printf("obj = %+v\n", gObj)
-		repo.Put(h, gObj)
-	}
-
-	return h, err
-}
-
-func hashObject(r io.Reader, t object.ObjectKind) (common.Hash, *object.GitObject, error) {
 	buf := &bytes.Buffer{}
 	_, err := buf.ReadFrom(r)
 	if err != nil {
 		log.Fatal(err)
 	}
-	g := object.NewGitObject(t, buf.Bytes())
-	h := g.Id()
 
-	return h, g, err
+	var h common.Hash
+	if save == false {
+		h = common.HashObject(oType.String(), buf.Bytes())
+	} else {
+		repo := GetRepository()
+		g := object.NewGitObject(oType, buf.Bytes())
+		repo.Put(g)
+		h = g.Id()
+	}
+
+	return h, err
 }

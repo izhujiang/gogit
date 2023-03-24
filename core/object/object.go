@@ -4,11 +4,9 @@ package object
 import (
 	"bytes"
 	"compress/zlib"
-	"crypto/sha1"
 	"errors"
 	"fmt"
 	"io"
-	"strconv"
 	"strings"
 
 	"github.com/izhujiang/gogit/common"
@@ -45,23 +43,21 @@ func (t ObjectKind) String() string {
 	}
 }
 
-var (
-	kindDict = map[string]ObjectKind{
-		"blob":   Kind_Blob,
-		"tree":   Kind_Tree,
-		"commit": Kind_Commit,
-		"tag":    Kind_Tag,
-	}
-)
-
-func ParseObjectType(objType string) ObjectKind {
-	if ot, ok := kindDict[strings.ToLower(objType)]; ok {
-		return ot
-	} else {
+func ParseObjectKind(kind string) ObjectKind {
+	switch kind {
+	case "blob":
+		return Kind_Blob
+	case "tree":
+		return Kind_Tree
+	case "commit":
+		return Kind_Commit
+	case "tag":
+		return Kind_Tag
+	default:
 		return Kind_Unknow
 	}
 }
-func FileModeToObjectKind(fm common.FileMode) ObjectKind {
+func ObjectKindFromFilemode(fm common.FileMode) ObjectKind {
 	if common.IsFile(fm) {
 		return Kind_Blob
 	} else if common.IsDir(fm) {
@@ -75,11 +71,11 @@ type Object interface {
 	Id() common.Hash
 	Kind() ObjectKind
 
-	Size() int64
+	// Size() int64
 	Content() string
 
-	Deserialize(r io.Reader) error
-	Serialize(w io.Writer) error
+	// Deserialize(r io.Reader) error
+	// Serialize(w io.Writer) error
 }
 
 // GitObject, unmodifiable object
@@ -91,16 +87,9 @@ type GitObject struct {
 	content []byte // unzipped content
 }
 
-func EmptyGitObject() *GitObject {
-	return &GitObject{}
-}
-
-// Remember to deserialize from stream
-func EmptyGitObjectWithId(id common.Hash) *GitObject {
-	return &GitObject{
-		oid: id,
-	}
-}
+// func EmptyGitObject() *GitObject {
+// 	return &GitObject{}
+// }
 
 func NewGitObject(t ObjectKind, content []byte) *GitObject {
 	s := len(content)
@@ -111,55 +100,9 @@ func NewGitObject(t ObjectKind, content []byte) *GitObject {
 		objectKind: t,
 		content:    c,
 	}
-	g.oid = g.Hash()
+	g.Hash()
 
 	return g
-}
-
-// Load GitObject from stream (git repository)
-func (g *GitObject) Deserialize(r io.Reader) error {
-	zr, _ := zlib.NewReader(r)
-	defer zr.Close()
-
-	var objtype string
-	var size int64
-	// read header
-	fmt.Fscanf(zr, "%s %d\x00", &objtype, &size)
-
-	// g := &GitObject{
-	// 	oid:        oid,
-	// 	objectKind: ParseObjectType(objtype),
-	// }
-	// g.size = size
-	g.objectKind = ParseObjectType(objtype)
-
-	g.content = make([]byte, size)
-	n, _ := zr.Read(g.content)
-
-	if n != len(g.content) {
-		return ErrGitObjectDataCorruptted
-	}
-
-	if g.oid != g.Hash() {
-		return ErrGitObjectDataCorruptted
-	}
-
-	return nil
-}
-
-func (g *GitObject) Serialize(w io.Writer) error {
-	wt := zlib.NewWriter(w)
-	defer wt.Close()
-
-	// write header and content
-	size := int64(len(g.content))
-	header := fmt.Sprintf("%s %d\x00", strings.ToLower(g.objectKind.String()), size)
-	_, err := wt.Write([]byte(header))
-	_, err = wt.Write(g.content)
-
-	err = wt.Flush()
-
-	return err
 }
 
 func (g *GitObject) Id() common.Hash {
@@ -179,17 +122,46 @@ func (g *GitObject) Content() string {
 }
 
 func (g *GitObject) Hash() common.Hash {
-	b := &bytes.Buffer{}
-	b.WriteString(g.objectKind.String())
-	b.WriteByte(common.SPACE)
-	b.WriteString(strconv.Itoa(len(g.content)))
-	b.WriteByte(common.NUL)
-	b.Write(g.content)
-	// fmt.Fprintf(b, "%s %d\u0000%s", t, len(content), content)
-
-	g.oid = common.Hash(sha1.Sum(b.Bytes()))
-
+	g.oid = common.HashObject(g.objectKind.String(), g.content)
 	return g.oid
+}
+
+// Load GitObject from stream (git repository)
+func Load(r io.Reader, oid common.Hash) (*GitObject, error) {
+	zr, _ := zlib.NewReader(r)
+	defer zr.Close()
+
+	var objtype string
+	var size int64
+	// read header
+	fmt.Fscanf(zr, "%s %d\x00", &objtype, &size)
+
+	kind := ParseObjectKind(objtype)
+	content := make([]byte, size)
+	n, _ := zr.Read(content)
+	g := NewGitObject(kind, content)
+
+	if n != len(g.content) || oid != g.Id() {
+		return nil, ErrGitObjectDataCorruptted
+	}
+
+	return g, nil
+}
+
+// Save GitObject to stream (git repository)
+func (g *GitObject) Save(w io.Writer) error {
+	wt := zlib.NewWriter(w)
+	defer wt.Close()
+
+	// write header and content
+	size := int64(len(g.content))
+	header := fmt.Sprintf("%s %d\x00", strings.ToLower(g.objectKind.String()), size)
+	_, err := wt.Write([]byte(header))
+	_, err = wt.Write(g.content)
+
+	err = wt.Flush()
+
+	return err
 }
 
 // Dump object in .git repository

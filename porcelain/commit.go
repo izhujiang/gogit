@@ -16,11 +16,18 @@ type CommitOption struct {
 }
 
 func Commit(w io.Writer, option *CommitOption) error {
+	// TODO: do nothing if nothing new in the StagingArea
+	// if (nothing new){
+	// return nil
+	// }
+
 	wto := &plumbing.WriteTreeOption{}
 	treeId, err := plumbing.WriteTree(wto)
 
 	if err != nil { // fail to WriteTree, including trees in cache are already valid
 		// TODO: promote as git status
+		fmt.Println(err, treeId)
+		return err
 
 	} else {
 		refs := core.GetReferencs()
@@ -46,11 +53,9 @@ func Commit(w io.Writer, option *CommitOption) error {
 		}
 
 		// TODO: list all commited files
-
-		lastCommit := object.EmptyCommit()
 		repo := core.GetRepository()
-		gObj, _ := repo.Get(lastCommitId)
-		lastCommit.FromGitObject(gObj)
+		g, _ := repo.Get(lastCommitId)
+		lastCommit := object.GitObjectToCommit(g)
 		lastTreeId := lastCommit.Tree()
 
 		changes, err := compareTrees(lastTreeId, treeId)
@@ -82,7 +87,7 @@ func Commit(w io.Writer, option *CommitOption) error {
 func compareTrees(lastTreeId common.Hash, thisTreeId common.Hash) (*common.Changes, error) {
 	repo := core.GetRepository()
 
-	lastTree, err := repo.LoadTrees(lastTreeId, "")
+	lastTree, err := repo.LoadTrees(lastTreeId)
 	if err != nil {
 		return nil, err
 	}
@@ -92,7 +97,7 @@ func compareTrees(lastTreeId common.Hash, thisTreeId common.Hash) (*common.Chang
 	// lastTrees.WalkTreeEntryByAlphabeticalOrder(lastTreeCollector.collect)
 	lastTrees.DFWalk(lastTreeCollector.collect, true)
 
-	thisTree, err := repo.LoadTrees(thisTreeId, "")
+	thisTree, err := repo.LoadTrees(thisTreeId)
 	if err != nil {
 		return nil, err
 	}
@@ -111,13 +116,13 @@ type filesCollector struct {
 }
 
 func (fc *filesCollector) collect(path string, t *object.Tree) error {
-	t.ForEach(func(e object.TreeEntry) error {
-		if e.Kind() == object.Kind_Blob {
-			fp := filepath.Join(path, e.Name())
+	t.ForEach(func(e *object.TreeEntry) error {
+		if e.Kind == object.Kind_Blob {
+			fp := filepath.Join(path, e.Name)
 			p := &common.NameHashPair{
 				Name: fp,
-				Oid:  e.Id(),
-				Mode: e.Type(),
+				Oid:  e.Oid,
+				Mode: e.Filemode,
 			}
 			fc.pairs = append(fc.pairs, p)
 		}

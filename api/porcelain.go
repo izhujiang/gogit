@@ -29,7 +29,7 @@ func Add(paths []string, option *AddOption) error {
 }
 
 func Remove(paths []string, option *RemoveOption) error {
-	return porcelain.Remove(paths)
+	return porcelain.Remove(paths, option)
 }
 
 func Reset() error {

@@ -2,8 +2,10 @@ package common
 
 import (
 	"bytes"
+	"crypto/sha1"
 	"encoding/hex"
 	"errors"
+	"strconv"
 )
 
 // Git Object Id represented with 20 bytes
@@ -38,11 +40,18 @@ func (h Hash) String() string {
 	return hex.EncodeToString(h[:])
 }
 
-//	func (h Hash) Copy() Hash {
-//		var hc Hash
-//		copy(hc[:], h[:])
-//		return hc
-//	}
 func (h Hash) EqualsTo(t Hash) bool {
 	return bytes.Equal(h[:], t[:])
+}
+
+// hash contetn by append gitobject header (kind, size)
+func HashObject(kind string, content []byte) Hash {
+	b := &bytes.Buffer{}
+	b.WriteString(kind)
+	b.WriteByte(SPACE)
+	b.WriteString(strconv.Itoa(len(content)))
+	b.WriteByte(NUL)
+	b.Write(content)
+
+	return Hash(sha1.Sum(b.Bytes()))
 }

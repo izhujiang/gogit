@@ -47,12 +47,6 @@ func (id *IndexDecoder) Decode(idx *Index) error {
 
 	err = decodeExtensions(r, idx)
 
-	// return &IndexFile{
-	// 	Header:     header,
-	// 	Entries:    entries,
-	// 	Extensions: extentions,
-	// 	Checksum:   h,
-	// }
 	return err
 }
 
@@ -71,8 +65,8 @@ func decodeHeader(r io.Reader, idx *Index) error {
 	return err
 }
 
-func validateCheckSum(all *bytes.Buffer) error {
-	data := all.Bytes()
+func validateCheckSum(buf *bytes.Buffer) error {
+	data := buf.Bytes()
 	n := len(data)
 	h1 := data[n-20 : n]
 	h2 := sha1.Sum(data[:n-20])
@@ -95,6 +89,7 @@ func decodeIndexEntries(r *bufio.Reader, idx *Index) error {
 	var ext_flags uint16
 	var fpath []byte
 	var fpathLength int
+
 	for i := 0; i < int(idx.numberOfIndexEntries); i++ {
 		c_sec, _ = ReadUint32(r)
 		c_nsec, _ = ReadUint32(r)
@@ -169,7 +164,6 @@ func decodeIndexEntries(r *bufio.Reader, idx *Index) error {
 			skipworktree: (ext_flags & maskExtflagSkipWorktree) != 0,
 			intentToAdd:  (ext_flags & maskExtflagIntentToAdd) != 0,
 		}
-
 		// fmt.Println("file name: ", string(entry.Filepath))
 
 		idx.entries = append(idx.entries, entry)
@@ -248,10 +242,7 @@ func decodeTreeCacheExtension(rd io.Reader, idx *Index) error {
 		}
 		copy(te.Oid[:], oid)
 
-		// fmt.Println(te)
 		idx.cacheTree.cacheTreeEntries = append(idx.cacheTree.cacheTreeEntries, te)
 	}
-	idx.cacheTree.buildTreeFs()
-
 	return nil
 }

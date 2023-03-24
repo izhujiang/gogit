@@ -37,64 +37,26 @@ func (r *Repository) InitRepository(w io.Writer, root string) error {
 	return nil
 }
 
-func (r *Repository) Put(h common.Hash, obj object.Object) error {
-	oid := h.String()
-	dir := filepath.Join(r.ObjectsPath(), oid[:2])
-	path := filepath.Join(dir, oid[2:])
+func (r *Repository) Put(g *object.GitObject) error {
+	soid := g.Id().String()
 
-	if utils.FileExists(path) {
+	dir := filepath.Join(r.ObjectsPath(), soid[:2])
+	path := filepath.Join(dir, soid[2:])
+
+	if g == nil || utils.FileExists(path) {
 		return nil
-		// log.Fatal("git object has existed: ", oid)
 	}
 
 	os.MkdirAll(dir, 0755)
 	f, err := os.Create(path)
 	if err != nil {
-		log.Fatal(err)
 		return err
 	}
 	defer f.Close()
 
-	err = obj.Serialize(f)
+	err = g.Save(f)
 	return err
 }
-
-// Get GitObject from Repository, return nil and error if oid is invalide
-// func (r *Repository) Get(oid common.Hash) (object.Object, error) {
-// 	path, err := r.checkObjectExists(oid)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-
-// 	// fmt.Println("object path:", path)
-// 	// TODO: handle reading from git repository (blob, tree, commmit and tag)
-// 	f, err := os.Open(path)
-// 	if err != nil {
-// 		log.Fatal(err)
-// 		return nil, err
-// 	}
-// 	defer f.Close()
-
-// 	g, err := object.Deserialize(oid, f)
-
-// 	switch g.Kind() {
-// 	case object.Kind_Blob:
-// 		return &object.Blob{
-// 			GitObject: *g,
-// 		}, nil
-
-// 	case object.Kind_Tree:
-// 		return &object.Tree{
-// 			GitObject: *g,
-// 		}, nil
-// 	case object.Kind_Commit:
-// 		panic("Not implemented")
-// 	case object.Kind_Tag:
-// 		panic("Not implemented")
-
-// 	}
-// 	return nil, object.ErrInvalidObject
-// }
 
 // Get GitObject from Repository, return nil and error if oid is invalide
 func (r *Repository) Get(oid common.Hash) (*object.GitObject, error) {
@@ -103,8 +65,6 @@ func (r *Repository) Get(oid common.Hash) (*object.GitObject, error) {
 		return nil, err
 	}
 
-	// fmt.Println("object path:", path)
-	// TODO: handle reading from git repository (blob, tree, commmit and tag)
 	f, err := os.Open(path)
 	if err != nil {
 		log.Fatal(err)
@@ -112,18 +72,43 @@ func (r *Repository) Get(oid common.Hash) (*object.GitObject, error) {
 	}
 	defer f.Close()
 
-	g := object.EmptyGitObjectWithId(oid)
-	err = g.Deserialize(f)
+	g, err := object.Load(f, oid)
 	return g, err
 }
 
-// Load multiple Trees leaded leaded with rootId from repository
-func (r *Repository) LoadTrees(rootId common.Hash, rootName string) (*object.Tree, error) {
-	if rootId == common.ZeroHash {
+func (r *Repository) GetAsBlob(oid common.Hash) (*object.Blob, error) {
+	if oid == common.ZeroHash {
 		return nil, errObjectNotExists
 	}
 
-	root := object.NewTree(rootId, rootName, common.Dir)
+	g, err := r.Get(oid)
+	if err != nil {
+		return nil, err
+	}
+	b := object.GitObjectToBlob(g)
+	return b, nil
+}
+
+func (r *Repository) GetAsTree(oid common.Hash) (*object.Tree, error) {
+	if oid == common.ZeroHash {
+		return nil, errObjectNotExists
+	}
+
+	g, err := r.Get(oid)
+	if err != nil {
+		return nil, err
+	}
+	t := object.GitObjectToTree(g)
+	return t, nil
+}
+
+// Load multiple Trees led by rootId from repository
+func (r *Repository) LoadTrees(rootId common.Hash) (*object.Tree, error) {
+	root, err := r.GetAsTree(rootId)
+	if err != nil {
+		return nil, err
+	}
+
 	tq := object.NewQueue()
 	tq.Enqueue(root)
 	for {
@@ -132,16 +117,13 @@ func (r *Repository) LoadTrees(rootId common.Hash, rootName string) (*object.Tre
 			break
 		}
 
-		g, err := r.Get(t.Id())
-		if err != nil {
-			continue
-		}
-
-		t.FromGitObject(g)
-		t.ForEach(func(e object.TreeEntry) error {
-			if e.Kind() == object.Kind_Tree {
-				// fmt.Println("enqueue t: ", e.Id(), e.Name())
-				tq.Enqueue(e.(*object.Tree))
+		t.ForEach(func(e *object.TreeEntry) error {
+			if e.Kind == object.Kind_Tree {
+				sub_t, err := r.GetAsTree(e.Oid)
+				if err == nil {
+					e.Pointer = sub_t
+					tq.Enqueue(sub_t)
+				}
 			}
 
 			return nil
@@ -157,7 +139,6 @@ func (r *Repository) Dump(oid common.Hash, w io.Writer) error {
 		return err
 	}
 
-	// fmt.Println(path)
 	f, err := os.Open(path)
 	if err != nil {
 		log.Fatal(err)
@@ -180,30 +161,11 @@ func (r *Repository) checkObjectExists(oid common.Hash) (string, error) {
 	return path, nil
 }
 
-// func GetRepository() (*Repository, error) {
-// 	if singleInstance == nil {
-// 		lock.Lock()
-// 		defer lock.Unlock()
-
-// 		if !utils.DirectoryExists(repositoryRoot) {
-// 			return nil, errRepositoryNotExists
-// 		}
-
-// 		if singleInstance == nil {
-// 			singleInstance = &Repository{Name: repositoryName, Path: repositoryRoot}
-// 		}
-// 	}
-
-// 	return singleInstance, nil
-// }
-
 func (r *Repository) ObjectsPath() string {
 	return filepath.Join(r.Path, "objects")
 }
 
 // --------------------------------------------------------------------------
-// internal functions
-
 func setupRepositoryFramework(w io.Writer, path string) {
 	_, err := os.Stat(path)
 	if os.IsNotExist(err) {

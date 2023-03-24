@@ -1,52 +1,25 @@
 package porcelain
 
 import (
-	"io/fs"
-	"os"
-	"path/filepath"
-
 	"github.com/izhujiang/gogit/core"
 )
 
-func Remove(paths []string) error {
-	expandedPaths := make([]string, 0, 64)
-	for _, path := range paths {
-		fi, err := os.Stat(path)
-		if err != nil {
-			continue
-		}
+type RemoveOption struct {
+	Recursive bool
+}
 
-		if fi.IsDir() {
-			filepath.WalkDir(path, func(path string, d fs.DirEntry, err error) error {
-				if d.Type().IsRegular() {
-					expandedPaths = append(expandedPaths, path)
-				}
-				return nil
-			})
-		} else {
-			expandedPaths = append(expandedPaths, path)
-		}
-	}
+func Remove(paths []string, option *RemoveOption) error {
+	// TODO: check if some files have local modifications, remove all files and directories of working area if with --force
 
-	// TODO: check if some files have local modifications
-
-	// if files in working erea == files in index && files == repository
-
-	for _, path := range paths {
-		fi, err := os.Stat(path)
-		if err != nil {
-			continue
-		}
-
-		if fi.IsDir() {
-			os.RemoveAll(path)
-		} else {
-			os.Remove(path)
-		}
-	}
+	// fi, err := os.Stat(path)
+	// if fi.IsDir() {
+	// 	os.RemoveAll(path)
+	// } else {
+	// 	os.Remove(path)
+	// }
 
 	sa := core.GetStagingArea()
-	sa.Unstage(expandedPaths)
+	sa.Unstage(paths, option.Recursive)
 
 	return nil
 }

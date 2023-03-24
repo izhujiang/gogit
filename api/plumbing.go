@@ -12,7 +12,7 @@ import (
 
 func HashObject(w io.Writer, r io.Reader, option *HashObjectOption) error {
 	ho := &plumbing.HashObjectOption{
-		ObjectType: object.ParseObjectType(option.ObjectType),
+		ObjectType: object.ParseObjectKind(option.ObjectType),
 		Write:      option.Write,
 	}
 	h, err := plumbing.HashObject(r, ho)

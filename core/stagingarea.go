@@ -1,10 +1,7 @@
 package core
 
 import (
-	"errors"
-	"fmt"
 	"io"
-	"log"
 	"os"
 	"path/filepath"
 
@@ -13,58 +10,34 @@ import (
 	"github.com/izhujiang/gogit/core/object"
 )
 
-// inner state of StagingArea
 type StagingArea struct {
 	path string
 }
 
-var (
-	ErrIsNotATreeObject = errors.New("Is not a valid tree object.")
-)
-
-func (s *StagingArea) Stage(filepaths []string) error {
+func (s *StagingArea) Stage(paths []string) error {
 	idx := index.LoadIndex(s.path)
-	// repo := GetRepository()
 
-	stage := func(path string) error {
-		e := idx.FindIndexEntry(path)
-		fi, _ := os.Stat(path)
-
-		fmt.Println("staging ", path)
-		// file has not existed in idx of has been modified
-		if e == nil || e.ModTime().Before(fi.ModTime()) {
-			oid, err := HashObjectFromPath(path, object.Kind_Blob, true)
-			if err != nil {
-				return err
-			}
-
-			nEntry := index.NewIndexEntryWithFileInfo(oid, common.Regular, path, fi)
-			idx.UpdateOrInsertIndexEntry(nEntry)
-		}
-
-		return nil
+	for _, fp := range paths {
+		s.updateIndex(idx, fp)
 	}
 
-	for _, fp := range filepaths {
-		stage(fp)
-	}
+	idx.Sort()
 
-	idx.SaveIndex(s.path)
+	idx.Save(s.path)
 	return nil
 }
-
-func (s *StagingArea) Unstage(paths []string) {
-	panic("Not implemented")
-}
-
-func (s *StagingArea) Dump(w io.Writer) {
+func (s *StagingArea) Unstage(paths []string, recursive bool) {
 	idx := index.LoadIndex(s.path)
-	idx.Dump(w)
+	for _, fp := range paths {
+		idx.Remove(fp, recursive)
+	}
+
+	idx.Save(s.path)
 }
 
 func (s *StagingArea) LsFiles(w io.Writer, withDetail bool) {
 	idx := index.LoadIndex(s.path)
-	idx.LsIndexEntries(w, withDetail)
+	idx.LsIndex(w, withDetail)
 }
 
 // Reads tree information into the index
@@ -77,8 +50,9 @@ func (s *StagingArea) ReadTree(treeId common.Hash, prefix string, eraseOriginal 
 
 	repo := GetRepository()
 	// load trees from repo
-	base := filepath.Base(prefix)
-	root, err := repo.LoadTrees(treeId, base)
+	// base := filepath.Base(prefix)
+	root, err := repo.LoadTrees(treeId)
+
 	if err != nil {
 		return err
 	}
@@ -88,17 +62,18 @@ func (s *StagingArea) ReadTree(treeId common.Hash, prefix string, eraseOriginal 
 	var saveTree = func(t *object.Tree) error {
 		if t.Id() == common.ZeroHash {
 			t.Hash()
-
-			repo.Put(t.Id(), &t.GitObject)
+			g := t.ToGitObject()
+			repo.Put(g)
 		}
 		return nil
 	}
 
 	err = idx.ReadTrees(fs, saveTree)
+
 	if err != nil {
 		return err
 	}
-	return idx.SaveIndex(s.path)
+	return idx.Save(s.path)
 }
 
 func updateRootWithPrefix(root *object.Tree, prefix string) *object.Tree {
@@ -106,23 +81,22 @@ func updateRootWithPrefix(root *object.Tree, prefix string) *object.Tree {
 		return root
 	}
 
-	path := filepath.Dir(prefix)
+	path := prefix
 	// build trees from prefix and link trees from repo
 	for {
 		base := filepath.Base(path)
 		if base == "." {
-			base = ""
-		}
-
-		pTree := object.NewTree(common.ZeroHash, base, common.Dir)
-		pTree.UpdateOrAddEntry(root)
-		pTree.Sort()
-		// pTree.Hash()
-		root = pTree
-
-		if base == "" {
 			break
 		}
+
+		// parent tree
+		pTree := object.EmptyTree()
+
+		entry := object.NewTreeEntry(root.Id(), base, common.Dir)
+		entry.Pointer = root
+		pTree.Append(entry)
+
+		root = pTree
 
 		path = filepath.Dir(path)
 	}
@@ -137,53 +111,88 @@ func (s *StagingArea) WriteTree() (common.Hash, error) {
 	repo := GetRepository()
 
 	treeId, err := idx.WriteTree(func(t *object.Tree) error {
-		oid := t.Hash()
+		if t.Id() == common.ZeroHash {
+			t.Hash()
 
-		repo.Put(oid, &t.GitObject)
+			g := t.ToGitObject()
+			repo.Put(g)
+		}
 		return nil
 	})
+
 	if err != nil {
 		return treeId, err
 	}
 
-	idx.SaveIndex(s.path)
+	idx.Save(s.path)
 
 	return treeId, nil
 }
 
-// UpdateIndexEntry add or replace IndexEntry identified by path, and Invalidate all entries in TreeCache covered by path
-func (s *StagingArea) UpdateIndex(oid common.Hash, path string) {
-	idx := index.LoadIndex(s.path)
+func (s *StagingArea) updateIndex(idx *index.Index, path string) error {
+	e := idx.Find(path)
+	fi, _ := os.Stat(path)
 
-	fi, err := os.Stat(path)
-	if err != nil {
-		log.Fatal(err)
+	// file has not existed in idx of has been modified
+	if e == nil {
+		oid, err := HashObjectFromPath(path, object.Kind_Blob, true)
+		if err != nil {
+			return err
+		}
+
+		e = index.NewIndexEntryWithFileInfo(oid, common.Regular, path, fi)
+		idx.Append(e)
+
+	} else if e.ModTime().Before(fi.ModTime()) {
+		oid, err := HashObjectFromPath(path, object.Kind_Blob, true)
+		if err != nil {
+			return err
+		}
+
+		idx.Update(e, oid, fi)
+		// e.Update(oid, fi)
 	}
 
-	entry := index.NewIndexEntryWithFileInfo(oid, common.Regular, path, fi)
-	idx.UpdateOrInsertIndexEntry(entry)
+	return nil
+}
 
+// UpdateIndexEntry add or replace IndexEntry identified by path, and Invalidate all entries in TreeCache covered by path
+func (s *StagingArea) UpdateIndex(path string) {
+	idx := index.LoadIndex(s.path)
+
+	s.updateIndex(idx, path)
 	idx.Sort()
 
 	// idx.InvalidatePathInCacheTree(path)
-	idx.SaveIndex(s.path)
+	idx.Save(s.path)
 }
 
 func (s *StagingArea) UpdateIndexFromCache(oid common.Hash, path string, mode common.FileMode) {
 	idx := index.LoadIndex(s.path)
 
-	entry := index.NewIndexEntry(oid, mode, path)
-	idx.UpdateOrInsertIndexEntry(entry)
+	// file has not existed in idx of has been modified
+	e := idx.Find(path)
+	if e == nil {
+		e = index.NewIndexEntry(oid, common.Regular, path)
+		idx.Append(e)
+		idx.Sort()
+	} else {
+		idx.Update(e, oid, nil)
+		idx.Sort()
+	}
 
-	// idx.InvalidatePathInCacheTree(path)
-
-	idx.SaveIndex(s.path)
+	idx.Save(s.path)
 }
 
 // If a specified file is in the index but is missing then it’s removed. Default behavior is to ignore removed file.
 func (s *StagingArea) UpdateIndexRemove(path string) {
 	idx := index.LoadIndex(s.path)
 
-	idx.RemoveIndexEntry(path)
-	idx.SaveIndex(s.path)
+	idx.Remove(path, false)
+	idx.Save(s.path)
+}
+
+func (s *StagingArea) Dump(w io.Writer) {
+	idx := index.LoadIndex(s.path)
+	idx.Dump(w)
 }

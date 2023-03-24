@@ -71,27 +71,27 @@ func encodeHeader(w io.Writer, idx *Index) {
 }
 
 func encodeIndexEntries(w io.Writer, idx *Index) {
-	encodeIndexEntry := func(entry *IndexEntry) {
-		c_sec, c_nsec, _ := timeToUint32(entry.cTime)
-		m_sec, m_nsec, _ := timeToUint32(entry.mTime)
+	encodeIndexEntry := func(e *IndexEntry) {
+		c_sec, c_nsec, _ := timeToUint32(e.cTime)
+		m_sec, m_nsec, _ := timeToUint32(e.mTime)
 
 		Write(w, uint32(c_sec))
 		Write(w, uint32(c_nsec))
 		Write(w, uint32(m_sec))
 		Write(w, uint32(m_nsec))
 
-		Write(w, uint32(entry.dev))
-		Write(w, uint32(entry.ino))
-		Write(w, uint32(entry.mode))
+		Write(w, uint32(e.dev))
+		Write(w, uint32(e.ino))
+		Write(w, uint32(e.mode))
 
-		Write(w, uint32(entry.uid))
-		Write(w, uint32(entry.gid))
-		Write(w, uint32(entry.size))
-		Write(w, entry.oid[:])
+		Write(w, uint32(e.uid))
+		Write(w, uint32(e.gid))
+		Write(w, uint32(e.size))
+		Write(w, e.oid[:])
 
 		var flags uint16
-		flags = uint16(entry.stage&0x3) << 12
-		if l := len(entry.filepath); l < maskFlagNameLength {
+		flags = uint16(e.stage&0x3) << 12
+		if l := len(e.filepath); l < maskFlagNameLength {
 			flags |= uint16(l)
 		} else {
 			flags |= 0x0FFF
@@ -101,12 +101,12 @@ func encodeIndexEntries(w io.Writer, idx *Index) {
 
 		entry_fixed_size := 62
 
-		if entry.intentToAdd || entry.skipworktree {
+		if e.intentToAdd || e.skipworktree {
 			var ext_flags uint16
-			if entry.intentToAdd {
+			if e.intentToAdd {
 				ext_flags |= maskExtflagIntentToAdd
 			}
-			if entry.skipworktree {
+			if e.skipworktree {
 				ext_flags |= maskExtflagSkipWorktree
 			}
 
@@ -114,10 +114,10 @@ func encodeIndexEntries(w io.Writer, idx *Index) {
 			entry_fixed_size += 2
 		}
 
-		WriteString(w, entry.filepath)
+		WriteString(w, e.filepath)
 
 		if idx.version == idx_version_2 || idx.version == idx_version_3 {
-			entrySize := entry_fixed_size + len(entry.filepath)
+			entrySize := entry_fixed_size + len(e.filepath)
 			padLen := 8 - entrySize%8
 			pad := make([]byte, padLen)
 			Write(w, pad)
@@ -126,7 +126,7 @@ func encodeIndexEntries(w io.Writer, idx *Index) {
 		}
 	}
 
-	idx.foreach(encodeIndexEntry)
+	idx.Foreach(encodeIndexEntry)
 }
 
 func encodeExtensions(w io.Writer, idx *Index) {

@@ -29,8 +29,17 @@ func (c *Tag) Id() common.Hash {
 	h := c.oid
 	return h
 }
-func (c *Tag) SetId(oid common.Hash) {
-	c.oid = oid
+
+func (c *Tag) Object() common.Hash {
+	return c.refObject
+}
+
+func (c *Tag) Type() ObjectKind {
+	return c.refType
+}
+
+func (c *Tag) Tagger() string {
+	return c.tagger
 }
 
 func (c *Tag) FromGitObject(g *GitObject) {

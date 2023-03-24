@@ -43,8 +43,7 @@ func CatFile(w io.Writer, oid common.Hash, option *CatFileOption) error {
 			tree := object.GitObjectToTree(g)
 			fmt.Fprintf(w, "%s", tree.Content())
 		case object.Kind_Commit:
-			commit := object.EmptyCommit()
-			commit.FromGitObject(g)
+			commit := object.GitObjectToCommit(g)
 			fmt.Fprintf(w, "%s", commit.Content())
 		default:
 			panic("Not implemented")
