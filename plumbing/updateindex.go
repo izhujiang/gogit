@@ -16,6 +16,8 @@ type UpdateIndexOption struct {
 // Register file contents in the working tree to the index
 func UpdateIndex(option *UpdateIndexOption) error {
 	sa := core.GetStagingArea()
+	sa.Load()
+
 	switch option.Op {
 	case "replace", "add":
 		if option.Path != "" {
@@ -47,5 +49,7 @@ func UpdateIndex(option *UpdateIndexOption) error {
 		panic(msg)
 	}
 
-	return nil
+	err := sa.Save()
+
+	return err
 }

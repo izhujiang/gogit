@@ -15,6 +15,9 @@ import (
 
 type IndexDecoder struct {
 	Reader io.Reader
+
+	// for temporally use
+	numberOfIndexEntries uint32
 }
 
 func NewIndexDecoder(r io.Reader) *IndexDecoder {
@@ -24,10 +27,10 @@ func NewIndexDecoder(r io.Reader) *IndexDecoder {
 
 }
 
-func (id *IndexDecoder) Decode(idx *Index) error {
+func (d *IndexDecoder) Decode(idx *Index) error {
 	// load all contents
 	buf := &bytes.Buffer{}
-	io.Copy(buf, id.Reader)
+	io.Copy(buf, d.Reader)
 
 	if err := validateCheckSum(buf); err != nil {
 		return err
@@ -35,12 +38,12 @@ func (id *IndexDecoder) Decode(idx *Index) error {
 
 	r := bufio.NewReader(io.LimitReader(buf, int64(buf.Len()-20)))
 
-	err := decodeHeader(r, idx)
+	err := d.decodeHeader(r, idx)
 	if err != nil {
 		return err
 	}
 
-	err = decodeIndexEntries(r, idx)
+	err = d.decodeIndexEntries(r, idx)
 	if err != nil {
 		return err
 	}
@@ -50,7 +53,7 @@ func (id *IndexDecoder) Decode(idx *Index) error {
 	return err
 }
 
-func decodeHeader(r io.Reader, idx *Index) error {
+func (d *IndexDecoder) decodeHeader(r io.Reader, idx *Index) error {
 	sign, err := ReadSlice(r, 4)
 	if err != nil || !bytes.Equal(sign, []byte(sign_Index)) {
 		return ErrNotOrInvalidIndexFile
@@ -61,7 +64,8 @@ func decodeHeader(r io.Reader, idx *Index) error {
 		return ErrInvalidIndexFileVersion
 	}
 
-	idx.numberOfIndexEntries, err = ReadUint32(r)
+	d.numberOfIndexEntries, err = ReadUint32(r)
+
 	return err
 }
 
@@ -77,7 +81,7 @@ func validateCheckSum(buf *bytes.Buffer) error {
 	return nil
 }
 
-func decodeIndexEntries(r *bufio.Reader, idx *Index) error {
+func (id *IndexDecoder) decodeIndexEntries(r *bufio.Reader, idx *Index) error {
 	// entries := make([]*IndexEntry, 0)
 	var c_sec, c_nsec uint32
 	var m_sec, m_nsec uint32
@@ -90,7 +94,7 @@ func decodeIndexEntries(r *bufio.Reader, idx *Index) error {
 	var fpath []byte
 	var fpathLength int
 
-	for i := 0; i < int(idx.numberOfIndexEntries); i++ {
+	for i := 0; i < int(id.numberOfIndexEntries); i++ {
 		c_sec, _ = ReadUint32(r)
 		c_nsec, _ = ReadUint32(r)
 		m_sec, _ = ReadUint32(r)
@@ -215,8 +219,7 @@ func decodeTreeCacheExtension(rd io.Reader, idx *Index) error {
 	size, _ := ReadUint32(rd)
 
 	r := bufio.NewReader(io.LimitReader(rd, int64(size)))
-
-	idx.cacheTree = newCacheTree()
+	cacheTreeEntries := make([]*CacheTreeEntry, 0, size)
 	for {
 		name, err := ReadUntil(r, sep_NULL)
 		if err != nil {
@@ -242,7 +245,9 @@ func decodeTreeCacheExtension(rd io.Reader, idx *Index) error {
 		}
 		copy(te.Oid[:], oid)
 
-		idx.cacheTree.cacheTreeEntries = append(idx.cacheTree.cacheTreeEntries, te)
+		cacheTreeEntries = append(cacheTreeEntries, te)
 	}
+	idx.CacheTree.cacheTreeEntries = cacheTreeEntries
+
 	return nil
 }

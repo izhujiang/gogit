@@ -149,7 +149,7 @@ func (t *Tree) Sort() {
 
 // Update, remove extra empty subtrees and update tree entries which are async with subtree
 // Caution: empty tree entries will be remove and
-func (t *Tree) UpdateEntryState() {
+func (t *Tree) RegularizeEntries() {
 	entrychanged := false
 
 	es := make([]*TreeEntry, 0, t.EntryCount())
@@ -163,13 +163,13 @@ func (t *Tree) UpdateEntryState() {
 				es = append(es, e)
 			} else {
 				subT := e.Pointer.(*Tree)
-				if subT.EntryCount() != 0 {
+				if subT.EntryCount() != 0 { // update entry acorrding to sub-tree
 					if e.Oid != subT.Id() {
 						e.Oid = subT.Id()
 						entrychanged = true
 					}
 					es = append(es, e)
-				} else { // filter out the empty entry
+				} else { // remove the empty sub-tree
 					entrychanged = true
 				}
 			}

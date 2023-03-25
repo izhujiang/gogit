@@ -66,7 +66,7 @@ func encodeHeader(w io.Writer, idx *Index) {
 	buf := &bytes.Buffer{}
 	WriteString(buf, sign_Index)
 	Write(buf, idx.version)
-	Write(buf, idx.numberOfIndexEntries)
+	Write(buf, uint32(len(idx.IndexEntries.entries)))
 	Write(w, buf.Bytes())
 }
 
@@ -141,13 +141,14 @@ func encodeExtensions(w io.Writer, idx *Index) {
 
 }
 
+// assuming cacheTree is not nil
 func encodeExtensionTreeCache(w io.Writer, idx *Index) {
-	if idx.cacheTree != nil {
+	if len(idx.CacheTree.cacheTreeEntries) > 0 {
 		var size uint32
 		data := &bytes.Buffer{}
 
-		idx.cacheTree.foreach(func(e *CacheTreeEntry) {
-			// fmt.Println("entry name: ", e.Name, strconv.Itoa(e.EntryCount), strconv.Itoa(e.SubtreeCount))
+		idx.CacheTree.foreach(func(e *CacheTreeEntry) {
+			// fmt.Println("entry name: ", e.Oid, e.Name, strconv.Itoa(e.EntryCount), strconv.Itoa(e.SubtreeCount))
 			WriteString(data, e.Name)
 			Write(data, sep_NULL)
 			WriteString(data, strconv.Itoa(e.EntryCount))

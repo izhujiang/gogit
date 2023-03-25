@@ -71,11 +71,7 @@ type Object interface {
 	Id() common.Hash
 	Kind() ObjectKind
 
-	// Size() int64
 	Content() string
-
-	// Deserialize(r io.Reader) error
-	// Serialize(w io.Writer) error
 }
 
 // GitObject, unmodifiable object
@@ -87,10 +83,6 @@ type GitObject struct {
 	content []byte // unzipped content
 }
 
-// func EmptyGitObject() *GitObject {
-// 	return &GitObject{}
-// }
-
 func NewGitObject(t ObjectKind, content []byte) *GitObject {
 	s := len(content)
 	c := make([]byte, s)
@@ -100,6 +92,8 @@ func NewGitObject(t ObjectKind, content []byte) *GitObject {
 		objectKind: t,
 		content:    c,
 	}
+
+	// TODO: add condition to control hash or not.
 	g.Hash()
 
 	return g

@@ -21,5 +21,12 @@ func ReadTree(w io.Writer, oid common.Hash, option *ReadTreeOption) error {
 		eraseOriginal = true
 
 	}
-	return sa.ReadTree(oid, option.Prefix, eraseOriginal)
+	sa.Load()
+	err := sa.ReadTree(oid, option.Prefix, eraseOriginal)
+
+	if err != nil {
+		return err
+	}
+
+	return sa.Save()
 }

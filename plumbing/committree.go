@@ -23,10 +23,10 @@ func CommitTree(tree common.Hash, option *CommitTreeOption) (common.Hash, error)
 	if u < 0 {
 		u = 0
 	}
-	s := fmt.Sprintf("%d %s", u, t.Format("-0700"))
-	email := "Jiang Zhu <m.zhujiang@gmail.com>"
 
 	// TODO: using config info
+	s := fmt.Sprintf("%d %s", u, t.Format("-0700"))
+	email := "Jiang Zhu <m.zhujiang@gmail.com>"
 	author := fmt.Sprintf("%s %s", email, s)
 	committer := fmt.Sprintf("%s %s", email, s)
 	parents := option.Parents

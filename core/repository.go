@@ -67,7 +67,6 @@ func (r *Repository) Get(oid common.Hash) (*object.GitObject, error) {
 
 	f, err := os.Open(path)
 	if err != nil {
-		log.Fatal(err)
 		return nil, err
 	}
 	defer f.Close()

@@ -35,13 +35,13 @@ type CacheTree struct {
 	cacheTreeEntries []*CacheTreeEntry
 }
 
-func newCacheTree() *CacheTree {
-	c := &CacheTree{
-		cacheTreeEntries: make([]*CacheTreeEntry, 0, cachetree_cap),
-	}
+// func newCacheTree() *CacheTree {
+// 	c := &CacheTree{
+// 		cacheTreeEntries: make([]*CacheTreeEntry, 0, cachetree_cap),
+// 	}
 
-	return c
-}
+// 	return c
+// }
 
 func (c *CacheTree) reset() {
 	c.cacheTreeEntries = make([]*CacheTreeEntry, 0, cachetree_cap)
@@ -56,6 +56,7 @@ func (c *CacheTree) load() {
 
 	newTreeFromCacheTreeEntry = func(cur int) *object.Tree {
 		curItem := c.cacheTreeEntries[cur]
+
 		t := object.NewTree(curItem.Oid)
 
 		for i := 0; i < curItem.SubtreeCount; i++ {
@@ -83,7 +84,8 @@ func (c *CacheTree) load() {
 	}
 }
 
-func (c *CacheTree) save() {
+// update cacheTreeEntries befor encodng with build-in c.TreeFs
+func (c *CacheTree) updateCacheTreeEntries() {
 	c.cacheTreeEntries = make([]*CacheTreeEntry, 0, cachetree_cap)
 	c.DFWalk(func(path string, t *object.Tree) error {
 		entryCount := 0
@@ -182,23 +184,27 @@ func (c *CacheTree) invalidatePathsWithPrefix(path string) {
 }
 
 func (c *CacheTree) dump(w io.Writer) {
-	headerformat := "%-40s %8s %8s  %-20s\n"
-	fmt.Fprintf(w,
-		headerformat,
-		"Oid",
-		"E_Count",
-		"ST_Count",
-		"Name",
-	)
+	if len(c.cacheTreeEntries) > 0 {
+		fmt.Println("Tree Entries:")
 
-	lineFormat := "%20s %8d %8d  %s\n"
-
-	c.foreach(func(e *CacheTreeEntry) {
+		headerformat := "%-40s %8s %8s  %-20s\n"
 		fmt.Fprintf(w,
-			lineFormat,
-			e.Oid,
-			e.EntryCount,
-			e.SubtreeCount,
-			e.Name)
-	})
+			headerformat,
+			"Oid",
+			"E_Count",
+			"ST_Count",
+			"Name",
+		)
+
+		lineFormat := "%20s %8d %8d  %s\n"
+		c.foreach(func(e *CacheTreeEntry) {
+			fmt.Fprintf(w,
+				lineFormat,
+				e.Oid,
+				e.EntryCount,
+				e.SubtreeCount,
+				e.Name)
+		})
+	}
+
 }

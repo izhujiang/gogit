@@ -12,10 +12,23 @@ import (
 
 type StagingArea struct {
 	path string
+	index.Index
+}
+
+func (s *StagingArea) Load() {
+	// s.Index.Load(s.path)
+	idx := &s.Index
+	idx.Load(s.path)
+}
+
+func (s *StagingArea) Save() error {
+	idx := &s.Index
+	return idx.Save(s.path)
+	// return s.Index.Save(s.path)
 }
 
 func (s *StagingArea) Stage(paths []string) error {
-	idx := index.LoadIndex(s.path)
+	idx := &s.Index
 
 	for _, fp := range paths {
 		s.updateIndex(idx, fp)
@@ -23,57 +36,55 @@ func (s *StagingArea) Stage(paths []string) error {
 
 	idx.Sort()
 
-	idx.Save(s.path)
 	return nil
 }
 func (s *StagingArea) Unstage(paths []string, recursive bool) {
-	idx := index.LoadIndex(s.path)
+	idx := &s.Index
 	for _, fp := range paths {
 		idx.Remove(fp, recursive)
 	}
 
-	idx.Save(s.path)
 }
 
-func (s *StagingArea) LsFiles(w io.Writer, withDetail bool) {
-	idx := index.LoadIndex(s.path)
-	idx.LsIndex(w, withDetail)
-}
+// func (s *StagingArea) LsFiles(w io.Writer, withDetail bool) {
+
+// 	s.ListIndex(w, withDetail)
+// }
 
 // Reads tree information into the index
 func (s *StagingArea) ReadTree(treeId common.Hash, prefix string, eraseOriginal bool) error {
-	idx := index.LoadIndex(s.path)
-
+	idx := &s.Index
 	if eraseOriginal == true {
 		idx.Reset()
 	}
-
 	repo := GetRepository()
-	// load trees from repo
-	// base := filepath.Base(prefix)
-	root, err := repo.LoadTrees(treeId)
 
+	// load trees led by root from repo and add to CacheTree
+	root, err := repo.LoadTrees(treeId)
 	if err != nil {
 		return err
 	}
 	root = updateRootWithPrefix(root, prefix)
 	fs := object.NewTreeFs(root)
+	idx.ReadTrees(fs)
 
-	var saveTree = func(t *object.Tree) error {
+	// Update Cachetree and save to repository
+	idx.UpdateCacheTree()
+	idx.CacheTree.DFWalk(func(path string, t *object.Tree) error {
+		t.RegularizeEntries()
+
 		if t.Id() == common.ZeroHash {
+			t.Sort()
 			t.Hash()
+
 			g := t.ToGitObject()
 			repo.Put(g)
 		}
+
 		return nil
-	}
+	}, false)
 
-	err = idx.ReadTrees(fs, saveTree)
-
-	if err != nil {
-		return err
-	}
-	return idx.Save(s.path)
+	return err
 }
 
 func updateRootWithPrefix(root *object.Tree, prefix string) *object.Tree {
@@ -106,27 +117,24 @@ func updateRootWithPrefix(root *object.Tree, prefix string) *object.Tree {
 
 // read .git/index file and using files to build and save trees
 func (s *StagingArea) WriteTree() (common.Hash, error) {
-	idx := index.LoadIndex(s.path)
-
+	idx := &s.Index
 	repo := GetRepository()
 
-	treeId, err := idx.WriteTree(func(t *object.Tree) error {
-		if t.Id() == common.ZeroHash {
-			t.Hash()
+	idx.UpdateCacheTree()
+	idx.CacheTree.DFWalk(func(path string, t *object.Tree) error {
+		t.RegularizeEntries()
 
+		if t.Id() == common.ZeroHash {
+			t.Sort()
+			t.Hash()
 			g := t.ToGitObject()
 			repo.Put(g)
 		}
+
 		return nil
-	})
+	}, false)
 
-	if err != nil {
-		return treeId, err
-	}
-
-	idx.Save(s.path)
-
-	return treeId, nil
+	return idx.CacheTree.Root().Id(), nil
 }
 
 func (s *StagingArea) updateIndex(idx *index.Index, path string) error {
@@ -158,17 +166,13 @@ func (s *StagingArea) updateIndex(idx *index.Index, path string) error {
 
 // UpdateIndexEntry add or replace IndexEntry identified by path, and Invalidate all entries in TreeCache covered by path
 func (s *StagingArea) UpdateIndex(path string) {
-	idx := index.LoadIndex(s.path)
-
+	idx := &s.Index
 	s.updateIndex(idx, path)
 	idx.Sort()
-
-	// idx.InvalidatePathInCacheTree(path)
-	idx.Save(s.path)
 }
 
 func (s *StagingArea) UpdateIndexFromCache(oid common.Hash, path string, mode common.FileMode) {
-	idx := index.LoadIndex(s.path)
+	idx := &s.Index
 
 	// file has not existed in idx of has been modified
 	e := idx.Find(path)
@@ -180,19 +184,16 @@ func (s *StagingArea) UpdateIndexFromCache(oid common.Hash, path string, mode co
 		idx.Update(e, oid, nil)
 		idx.Sort()
 	}
-
-	idx.Save(s.path)
 }
 
 // If a specified file is in the index but is missing then it’s removed. Default behavior is to ignore removed file.
 func (s *StagingArea) UpdateIndexRemove(path string) {
-	idx := index.LoadIndex(s.path)
+	idx := &s.Index
 
 	idx.Remove(path, false)
-	idx.Save(s.path)
 }
 
 func (s *StagingArea) Dump(w io.Writer) {
-	idx := index.LoadIndex(s.path)
+	idx := &s.Index
 	idx.Dump(w)
 }

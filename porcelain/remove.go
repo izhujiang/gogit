@@ -19,7 +19,9 @@ func Remove(paths []string, option *RemoveOption) error {
 	// }
 
 	sa := core.GetStagingArea()
+	sa.Load()
 	sa.Unstage(paths, option.Recursive)
+	err := sa.Save()
 
-	return nil
+	return err
 }

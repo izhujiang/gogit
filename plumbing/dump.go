@@ -19,6 +19,8 @@ func DumpObject(w io.Writer, oid common.Hash, option *DumpOption) error {
 
 func DumpIndex(w io.Writer, option *DumpOption) error {
 	sa := core.GetStagingArea()
+	sa.Load()
 	sa.Dump(w)
+
 	return nil
 }

@@ -55,12 +55,15 @@ func Commit(w io.Writer, option *CommitOption) error {
 		// TODO: list all commited files
 		repo := core.GetRepository()
 		g, _ := repo.Get(lastCommitId)
-		lastCommit := object.GitObjectToCommit(g)
-		lastTreeId := lastCommit.Tree()
+		var changes *common.Changes
+		if g != nil {
 
-		changes, err := compareTrees(lastTreeId, treeId)
-		if err != nil {
-			return err
+			lastCommit := object.GitObjectToCommit(g)
+			lastTreeId := lastCommit.Tree()
+
+			changes, err = compareTrees(lastTreeId, treeId)
+		} else {
+			changes, err = compareTrees(common.ZeroHash, treeId)
 		}
 
 		for _, c := range changes.Create {
@@ -87,26 +90,28 @@ func Commit(w io.Writer, option *CommitOption) error {
 func compareTrees(lastTreeId common.Hash, thisTreeId common.Hash) (*common.Changes, error) {
 	repo := core.GetRepository()
 
-	lastTree, err := repo.LoadTrees(lastTreeId)
-	if err != nil {
-		return nil, err
-	}
-	lastTrees := object.NewTreeFs(lastTree)
-
-	lastTreeCollector := &filesCollector{}
-	// lastTrees.WalkTreeEntryByAlphabeticalOrder(lastTreeCollector.collect)
-	lastTrees.DFWalk(lastTreeCollector.collect, true)
-
 	thisTree, err := repo.LoadTrees(thisTreeId)
 	if err != nil {
 		return nil, err
 	}
 	thisTrees := object.NewTreeFs(thisTree)
-
 	thisTreeCollector := &filesCollector{}
 	thisTrees.DFWalk(thisTreeCollector.collect, true)
 
-	changes := common.CompareOrderedNameHashPairs(lastTreeCollector.pairs, thisTreeCollector.pairs)
+	lastTree, err := repo.LoadTrees(lastTreeId)
+	var changes *common.Changes
+	if err != nil || lastTree == nil {
+		lastTreePairs := common.NameHashPairs(make([]*common.NameHashPair, 0))
+
+		changes = common.CompareOrderedNameHashPairs(lastTreePairs, thisTreeCollector.pairs)
+	} else {
+		lastTrees := object.NewTreeFs(lastTree)
+		lastTreeCollector := &filesCollector{}
+		lastTrees.DFWalk(lastTreeCollector.collect, true)
+
+		changes = common.CompareOrderedNameHashPairs(lastTreeCollector.pairs, thisTreeCollector.pairs)
+	}
+
 	return changes, nil
 
 }

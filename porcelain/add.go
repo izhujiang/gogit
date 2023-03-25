@@ -30,7 +30,9 @@ func Add(paths []string) error {
 	}
 
 	sa := core.GetStagingArea()
+	sa.Load()
 	sa.Stage(expandedPaths)
+	sa.Save()
 
 	return nil
 }

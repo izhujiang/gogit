@@ -85,7 +85,7 @@ type IndexEntries struct {
 	entries []*IndexEntry
 }
 
-func (ide *IndexEntries) LsIndex(w io.Writer, withDetail bool) {
+func (ide *IndexEntries) ListIndex(w io.Writer, withDetail bool) {
 	if withDetail {
 		for _, e := range ide.entries {
 			fmt.Fprintf(w, "%o %s %d \t%s\n", e.mode, e.oid, e.stage, e.filepath)

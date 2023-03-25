@@ -20,14 +20,15 @@ type LsFilesOption struct {
 
 func LsFiles(w io.Writer, option *LsFilesOption) error {
 	// Show cached files in the output (default)
+	sa := core.GetStagingArea()
+	sa.Load()
+
 	if option.Cached {
-		sa := core.GetStagingArea()
-		sa.LsFiles(w, false)
+		sa.ListIndex(w, false)
 	}
 
 	if option.Stage {
-		sa := core.GetStagingArea()
-		sa.LsFiles(w, true)
+		sa.ListIndex(w, true)
 	}
 
 	return nil

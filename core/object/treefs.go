@@ -124,6 +124,10 @@ func (fs *TreeFs) DFWalkWithPrefix(prefix string, fn WalkWithPathFunc, preorderi
 }
 
 func (fs *TreeFs) Find(path string) *Tree {
+	if fs.root == nil {
+		return nil
+	}
+
 	path = filepath.Clean(path)
 	path = filepath.ToSlash(path)
 	path = strings.TrimLeft(path, "/")
@@ -245,7 +249,7 @@ func (fs *TreeFs) Merge(anothor *TreeFs) {
 
 		// remove empty subtrees and udpate t's tree entries
 		fs.DFWalk(func(path string, t *Tree) error {
-			t.UpdateEntryState()
+			t.RegularizeEntries()
 			return nil
 		}, false)
 
